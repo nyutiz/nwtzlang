@@ -5,12 +5,13 @@ dis pop
 dis ""
 dis pop
 dis ""
-%Hey:
 
+%Hey:
 dis "Hello world "
 dis "Hello \n Grrr "
 dis "A is equals to "
 dis a
+dis ""
 end%
 
 dis "\n"
