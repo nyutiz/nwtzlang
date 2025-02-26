@@ -1,10 +1,11 @@
 %Display:
 dis pop
-dis ""
 end%
 
 %Sum:
-push (6+6*3)
+set a pop
+set b pop
+push (a+b)
 end%
 
 push "Hello world"
@@ -13,4 +14,3 @@ func Display
 push 5
 push 3
 func Sum
-dis pop

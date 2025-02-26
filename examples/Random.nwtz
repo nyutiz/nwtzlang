@@ -1,0 +1,20 @@
+set a 55
+push a
+push 89
+dis pop
+dis ""
+dis pop
+dis ""
+
+%Hey:
+dis "Hello world "
+dis "Hello \n Grrr \n"
+dis "A is equals to "
+dis a
+dis ""
+end%
+
+dis "\n"
+dis "AFAags"
+
+func Hey
