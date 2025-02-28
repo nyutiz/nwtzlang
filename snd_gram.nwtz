@@ -1,0 +1,17 @@
+with socket;
+with gui;
+with os;
+
+obj Human{
+    name: String,
+    surname: String,
+    age: int,
+}
+
+func main(String[] args){
+    server = new socket::server("localhost", 1234);
+    server.start();
+    log(args[0]);
+    log("Second arg: {}", args[1]);
+}
+

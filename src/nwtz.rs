@@ -1,13 +1,14 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
+#![allow(unused_assignments)]
 
-use std::collections::HashMap;
+use std::io;
+use std::io::Write;
 use std::sync::Mutex;
 use regex::Regex;
 use once_cell::sync::Lazy;
-use crate::nwtz::IdentifierType::{Func, Generic, Pop, Text, Dis, End, Set, Push};
+use crate::nwtz::IdentifierType::{Func, Generic, Pop, Text, Dis, End, Set, Push, IfEqual, Input};
 use crate::nwtz::PunctuationType::{FParenthesis, QuotationMark, SParenthesis};
-
 
 pub(crate) const DEBUG: bool = false;
 
@@ -35,6 +36,8 @@ pub enum PunctuationType {
 #[derive(Clone, Debug, PartialEq)]
 pub enum IdentifierType {
     Generic,
+    Input,
+    IfEqual,
     Stack,
     String,
     Text,
@@ -57,6 +60,19 @@ pub struct Function {
     name: String,
     action: Vec<Vec<Token>>, // Liste de Liste De Token
 }
+
+#[derive(Debug, Clone)]
+pub struct Object {
+    name: String,
+    action: Vec<Vec<Token>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Variable {
+    name: String,
+    value: String,
+}
+
 
 impl Token {
     pub fn new(token_type: TokenType, value: String) -> Self {
@@ -97,7 +113,7 @@ impl<T> Stack<T> {
     }
 }
 
-static VARS: Lazy<Mutex<Vec<HashMap<String, String>>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static VARS: Lazy<Mutex<Vec<Variable>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static STACK: Lazy<Mutex<Stack<String>>> = Lazy::new(|| Mutex::new(Stack::new()));
 
 static FUNCS: Lazy<Mutex<Vec<Function>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -146,6 +162,12 @@ impl Nwtz {
                     }
                     else if value == "end" {
                         TokenType::Identifier(End)
+                    }
+                    else if value == "ife" {
+                        TokenType::Identifier(IfEqual)
+                    }
+                    else if value == "input" {
+                        TokenType::Identifier(Input)
                     }
                     else if value.starts_with("$") {
                         TokenType::Identifier(IdentifierType::String)
@@ -232,6 +254,7 @@ impl Nwtz {
         while i < tokens.len() {
             let token = &tokens[i];
 
+
             if token.token_type != TokenType::NewLine {
                 active_line.push(token.clone());
                 i += 1;
@@ -240,25 +263,20 @@ impl Nwtz {
                     if active_line[0].token_type == TokenType::Function {
                         let mut name = active_line[0].value.clone();
                         name.pop();
-                        if name.len() > 0 {
+                        if !name.is_empty() {
                             name.remove(0);
                         }
-                        //println!("Function {}", name);
-
                         let mut function_body: Vec<Vec<Token>> = Vec::new();
                         let mut current_line: Vec<Token> = Vec::new();
                         let mut found_end = false;
                         i += 1;
-
                         while i < tokens.len() && !found_end {
                             let current_token = &tokens[i];
-
                             if current_token.token_type == TokenType::NewLine {
                                 if !current_line.is_empty() {
                                     let has_end = current_line.iter().any(|t|
                                         t.token_type == TokenType::Identifier(End)
                                     );
-
                                     if has_end {
                                         found_end = true;
                                     } else {
@@ -269,26 +287,60 @@ impl Nwtz {
                             } else {
                                 current_line.push(current_token.clone());
                             }
-
                             i += 1;
                         }
-
                         if !current_line.is_empty() {
                             let has_end = current_line.iter().any(|t|
-                                t.token_type == TokenType::Identifier(IdentifierType::End)
+                                t.token_type == TokenType::Identifier(End)
                             );
-
                             if !has_end {
                                 function_body.push(current_line);
                             }
                         }
-
-                        //println!("Function body contains {} lines", function_body.len());
-
                         Self::add_func(name, function_body);
+                    }
+                    else if active_line[0].token_type == TokenType::Identifier(IfEqual) && active_line.len() == 3 {
+                        let mut arg1 = active_line[1].clone();
+                        let mut arg2 = active_line[2].clone();
+
+                        if arg1.token_type == TokenType::Identifier(Generic) {
+                            arg1.value = Self::read_var(active_line[1].clone().value);
+                        }
+                        else if  arg1.token_type == TokenType::Identifier(Text){
+                            arg1.value = arg1.value.trim_matches('"').to_string();
+                        } 
+                        else if arg1.token_type == TokenType::Identifier(Pop){
+                            arg1.value = STACK.lock().unwrap().pop().unwrap();
+                        }
                         
-                        active_line.clear();
-                        continue;
+
+                        if arg2.token_type == TokenType::Identifier(Generic) {
+                            arg2.value = Self::read_var(active_line[2].clone().value);
+                        }
+                        else if  active_line[2].clone().token_type == TokenType::Identifier(Text){
+                            arg2.value = arg2.value.trim_matches('"').to_string();
+                        }
+                        else if arg2.token_type == TokenType::Identifier(Pop){
+                            arg2.value = STACK.lock().unwrap().pop().unwrap();
+                        }
+                        
+
+                        if arg1.value == arg2.value {
+                            i += 1;
+                            let mut next_line: Vec<Token> = Vec::new();
+                            while i < tokens.len() && tokens[i].token_type != TokenType::NewLine {
+                                next_line.push(tokens[i].clone());
+                                i += 1;
+                            }
+                            if !next_line.is_empty() {
+                                Self::line_handler(next_line);
+                            }
+                        } else {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].token_type != TokenType::NewLine {
+                                i += 1;
+                            }
+                        }
                     }
                     else {
                         debug(format!("Active line {:?}", active_line));
@@ -307,8 +359,13 @@ impl Nwtz {
 
         debug(format!("VARS {:?}", VARS.lock().unwrap()));
         debug(format!("FUNS {:?}", FUNCS.lock().unwrap()));
-
     }
+
+
+    pub fn check_if_equal(a: &str, b: &str) -> bool {
+        true
+    }
+
     pub fn add_func(name: String, func: Vec<Vec<Token>>){
         FUNCS.lock().unwrap().push(Function {
             name,
@@ -316,13 +373,13 @@ impl Nwtz {
         });
     }
 
-    pub fn run_func(name: String){
-        let guard = FUNCS.lock().unwrap();
-        for scope in guard.iter().rev() {
-            if scope.name == name {
-                for action in scope.action.iter() {
-                    Self::line_handler(action.clone());
-                }
+    pub fn run_func(name: String) {
+        let funcs = FUNCS.lock().unwrap();
+        if let Some(func) = funcs.iter().find(|f| f.name == name) {
+            let actions = func.action.clone();
+            drop(funcs);
+            for action in actions {
+                Self::line_handler(action);
             }
         }
     }
@@ -370,15 +427,39 @@ impl Nwtz {
                 }
             }
             else if token.token_type == TokenType::Identifier(Pop) && args.len() == 2 {
-                let argm1 = args.get(index-1).unwrap().value.clone();
-                if argm1 != "dis" {
-                    let arg1 = args.get(index+1).unwrap().value.clone();
-                    Self::define_var(arg1, STACK.lock().unwrap().pop().unwrap())
+                if index > 0 {
+                    let argm1 = args.get(index - 1).unwrap().value.clone();
+                    if argm1 != "dis" {
+                        let arg1 = args.get(index + 1).unwrap().value.clone();
+                        Self::define_var(arg1, STACK.lock().unwrap().pop().unwrap())
+                    }
                 }
             }
+
             else if token.token_type == TokenType::Identifier(Func) && args.len() == 2 {
                 let arg1 = args.get(index+1).unwrap().value.clone();
                 Self::run_func(arg1);
+            }
+            else if token.token_type == TokenType::Identifier(Input)  {
+                let mut arg1 = String::new();
+                if args.len() == 1 {
+                    io::stdout().flush().unwrap();
+                    io::stdin()
+                        .read_line(&mut arg1)
+                        .expect("Erreur lors de la lecture de l'entrée");
+
+                    let trimmed_input = arg1.trim().to_string();
+
+                    Self::define_var("INPUT".to_string(), trimmed_input);
+                } else if args.len() == 2 {
+                    io::stdout().flush().unwrap();
+                    io::stdin()
+                        .read_line(&mut arg1)
+                        .expect("Erreur lors de la lecture de l'entrée");
+                    let arg2 = args.get(index+1).unwrap().value.clone();
+                    let trimmed_input = arg1.trim().to_string();
+                    Self::define_var(arg2, trimmed_input);
+                }
             }
         }
     }
@@ -470,19 +551,18 @@ impl Nwtz {
     }
     pub fn define_var(name: String, value: String) {
         let mut vars = VARS.lock().unwrap();
-        if let Some(current_scope) = vars.last_mut() {
-            current_scope.insert(name, value);
+        if let Some(existing) = vars.iter_mut().find(|var| var.name == name) {
+            existing.value = value;
         } else {
-            let mut new_scope = HashMap::new();
-            new_scope.insert(name, value);
-            vars.push(new_scope);
+            vars.push(Variable { name, value });
         }
     }
+
     pub fn read_var(name: String) -> String {
         let guard = VARS.lock().unwrap();
-        for scope in guard.iter().rev() {
-            if let Some(value) = scope.get(&name) {
-                return value.clone();
+        for var in guard.iter().rev() {
+            if var.name == name {
+                return var.value.clone();
             }
         }
         "Null".to_string()
