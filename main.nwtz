@@ -1,51 +1,45 @@
-dis "Bienvenue dans le programme complexe!\n"
+with socket;
+with gui;
+with os;
+with Car.nwtz;
 
-dis "Veuillez entrer votre nom:"
-input name
-dis "Bonjour, "
-dis name
-dis ""
+obj Human{
+    name: String,
+    surname: String,
+    age: int,
+}
 
-dis "Veuillez entrer le premier nombre:"
-input num1
-dis "Veuillez entrer le deuxième nombre:"
-input num2
+func main(String[] args){
 
-set sum (num1+num2)
+    humans = Human[];
 
-push num1
-push num2
+    server = new socket::server("localhost", 1234);
 
-ife num1 num2
-dis "Les deux nombres sont égaux!"
-dis ""
+    server.start();
 
-%DisplaySum:
-dis "La somme de vos nombres est: "
-dis sum
-dis ""
-end%
+    human = new Human("Jerome", "Dupont", 75);
 
-func DisplaySum
+    humans.add(human);                                                      // ajoute human a humans par defaut mettre des index a chaque elements de la liste
 
-dis "Dernier nombre entré (depuis le stack): "
-dis pop
-dis "Premier nombre entré (depuis le stack): "
-dis pop
-dis ""
+    my_car = new Car("Tesla", "S", false);
 
-%DoubleSum:
-set ds (sum+sum)
-dis "Le double de la somme est: "
-dis ds
-dis ""
-end%
+    my_car.power();
+    mark_name = my_car.get_mark();
 
-func DoubleSum
+    log(mark_name);
 
-push "TempValue"
-pop temp
-dis "La valeur temporaire récupérée est: "
-dis temp
+    log(args[0]);
 
-dis "\nMerci et au revoir!"
+    log("Second arg: {}", args[1]);
+
+    if my_car.mark eq "Volvo" or my_car.started eq "false" and humans.len >= 2{
+        // run condition
+    }
+    else if... {
+
+    }
+    else {
+
+    }
+
+}

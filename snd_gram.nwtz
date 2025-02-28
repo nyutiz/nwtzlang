@@ -42,6 +42,11 @@ func main(String[] args){
 
     }
 
+
+    for (i, token) in tokens{
+        log("Token : {}" + token.value + " at index : {}" + i);
+    }
+
 }
 
 
@@ -64,7 +69,7 @@ impl Car{
 
 
 
-##########################Synthaxe##########################
+########################## Syntaxes ##########################
 
 // Import
 with [Lib Name];
@@ -75,8 +80,6 @@ with [File];
 log("");
 log(Obj.var1);
 
-log("Object : {}", Obj.var2);                                                   //
-OU
 log("Object : {}" + Obj.var2 + " and 1 {} 2{} " + Obj.var1 + Obj.var3);           // "Object : var2.value and 1var1.value 2 var3.value"
 log("Object : {}" + Obj.var2 + " and 1 {} 2{} " + Obj.var1);                      // "Object : var2.valu and 1 var1.value 2 var1.value"
 
@@ -112,3 +115,13 @@ else
 // List / Tables
 [Name] = Obj[];              // Liste of Obj
 [Name].add(new Obj());
+
+// Loop (Similar to rust)
+for (i, token) in tokens{
+    log("Token : {}" + token.value + " at index : {}" + i);
+}
+
+i = 0;
+while (i <= 50){
+    i++;
+}

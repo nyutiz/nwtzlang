@@ -1,0 +1,51 @@
+dis "Bienvenue dans le programme complexe!\n"
+
+dis "Veuillez entrer votre nom:"
+input name
+dis "Bonjour, "
+dis name
+dis ""
+
+dis "Veuillez entrer le premier nombre:"
+input num1
+dis "Veuillez entrer le deuxième nombre:"
+input num2
+
+set sum (num1+num2)
+
+push num1
+push num2
+
+ife num1 num2
+dis "Les deux nombres sont égaux!"
+dis ""
+
+%DisplaySum:
+dis "La somme de vos nombres est: "
+dis sum
+dis ""
+end%
+
+func DisplaySum
+
+dis "Dernier nombre entré (depuis le stack): "
+dis pop
+dis "Premier nombre entré (depuis le stack): "
+dis pop
+dis ""
+
+%DoubleSum:
+set ds (sum+sum)
+dis "Le double de la somme est: "
+dis ds
+dis ""
+end%
+
+func DoubleSum
+
+push "TempValue"
+pop temp
+dis "La valeur temporaire récupérée est: "
+dis temp
+
+dis "\nMerci et au revoir!"
