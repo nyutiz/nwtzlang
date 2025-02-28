@@ -207,7 +207,7 @@ impl Parser {
     }
 
     fn expect_identifier(&mut self, error_message: &str) -> Result<String, String> {
-        if let Some(Token::Identifier(ref id)) = self.current() {
+        if let Some(&Token::Identifier(ref id)) = self.current() {
             let name = id.clone();
             self.advance();
             Ok(name)
@@ -218,7 +218,7 @@ impl Parser {
 
     /// Vérifie si le token courant est un type connu (pour les définitions de fonction, etc.)
     fn peek_is_type(&self) -> bool {
-        if let Some(Token::Identifier(ref id)) = self.current() {
+        if let Some(&Token::Identifier(ref id)) = self.current() {
             matches!(id.as_str(), "Integer" | "Float" | "String" | "Object" | "Bool")
         } else {
             false
