@@ -11,7 +11,7 @@ obj Human{
 
 func main(String[] args){
 
-    humans = [Human];
+    humans = Human[];
 
     server = new socket::server("localhost", 1234);
 
@@ -62,10 +62,24 @@ impl Car{
     }
 }
 
+
+
 ##########################Synthaxe##########################
 
+// Import
 with [Lib Name];
 with [File];
+
+
+// Print
+log("");
+log(Obj.var1);
+
+log("Object : {}", Obj.var2);                                                   //
+OU
+log("Object : {}" + Obj.var2 + " and 1 {} 2{} " + Obj.var1 + Obj.var3);           // "Object : var2.value and 1var1.value 2 var3.value"
+log("Object : {}" + Obj.var2 + " and 1 {} 2{} " + Obj.var1);                      // "Object : var2.valu and 1 var1.value 2 var1.value"
+
 
 // Objects
 obj [Name] {
@@ -80,6 +94,7 @@ impl [Name] {}
 // Functions (to return something dont put ';')
 func [Return Type OR Nothing] [Name] ([Args]) {}
 
+
 // Define a variable
 [Var Name] =
              new Obj();
@@ -87,8 +102,13 @@ func [Return Type OR Nothing] [Name] ([Args]) {}
              45;
              5.5;
 
+
 // Conditions
 if ... and ...
 if ... or ...
 else if ...
 else
+
+// List / Tables
+[Name] = Obj[];              // Liste of Obj
+[Name].add(new Obj());
