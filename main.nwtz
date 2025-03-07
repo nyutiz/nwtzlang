@@ -19,7 +19,7 @@ func main(String[] args){
 
     human = new Human("Jerome", "Dupont", 75);
 
-    humans.add(human);                                                      // ajoute human a humans par defaut mettre des index a chaque elements de la liste
+    humans.add(human);
 
     my_car = new Car("Tesla", "S", false);
 
@@ -31,15 +31,5 @@ func main(String[] args){
     log(args[0]);
 
     log("Second arg: {}", args[1]);
-
-    if my_car.mark eq "Volvo" or my_car.started eq "false" and humans.len >= 2{
-        // run condition
-    }
-    else if... {
-
-    }
-    else {
-
-    }
 
 }
