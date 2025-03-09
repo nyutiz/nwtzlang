@@ -3,34 +3,20 @@
 #![allow(unused_assignments)]
 #![allow(unused_imports)]
 
+use std::any::Any;
+use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::io;
-use std::io::Write;
-use std::sync::Mutex;
+use std::process::exit;
 use logos::Logos;
 use regex::Regex;
 use once_cell::sync::Lazy;
-
-use crate::nwtz::PunctuationType::{FParenthesis, QuotationMark, SParenthesis};
-
-pub struct Nwtz {
-    input: String,
-    regex: Vec<(Regex, Box<dyn Fn(&str) -> Token>)>,
-}
-
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum PunctuationType {
-    FParenthesis,
-    SParenthesis,
-    QuotationMark,
-    Generic,
-}
+use crate::nwtz::ValueType::{Null, Number};
 
 #[derive(Clone, Debug, PartialEq, Logos)]
 pub enum Token {
     #[regex(r"[ \t\n\r\f]+", logos::skip)]
     #[regex(r"//[^\n\r]*", logos::skip)]
-
     #[token("with")]
     With,
     #[token("obj")]
@@ -54,10 +40,17 @@ pub enum Token {
     #[token("in")]
     In,
     #[token("for")]
-    For,  // Added for for-loops
+    For,
     #[token("log")]
-    Log,  // Added for print statements
-
+    Log,
+    #[token("+")]
+    Plus,
+    #[token("-")]
+    Minus,
+    #[token("*")]
+    Star,
+    #[token("%")]
+    Percent,
     #[token("=")]
     Equal,
     #[token(";")]
@@ -74,7 +67,6 @@ pub enum Token {
     RParen,
     #[token(",")]
     Comma,
-
     #[token("/")]
     Slash,
     #[token(".")]
@@ -85,121 +77,254 @@ pub enum Token {
     RBracket,
     #[token(">")]
     Greater,
-
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Identifier(String),
-
     #[regex(r#""([^"\\]|\\.)*""#, |lex| lex.slice().to_string())]
     StringLiteral(String),
     #[regex(r"\d+\.\d+", |lex| lex.slice().parse::<f64>().unwrap())]
     Float(f64),
     #[regex(r"\d+", |lex| lex.slice().parse::<i32>().unwrap())]
     Integer(i32),
-    #[token("true")]
-    True,
-    #[token("false")]
-    False,
+    //#[token("true")]
+    //True,
+    //#[token("false")]
+    //False,
+    #[token("null")]
+    Null,
+    EOF,
 }
 
-#[derive(Debug)]
-pub enum Statement {
-    Import { lib: String, file: String },
-    Print(Expression),
-    ObjectDeclaration {
-        name: String,
-        fields: Vec<(String, Type)>,
-    },
-    Implementation {
-        name: String,
-        methods: Vec<Statement>,
-    },
-    Function {
-        name: String,
-        return_type: Option<Type>,
-        args: Vec<Argument>,
-        body: Vec<Statement>,
-    },
-    VariableDeclaration {
-        name: String,
-        value: Expression,
-    },
-    If {
-        condition: Expression,
-        then_branch: Vec<Statement>,
-        else_branch: Option<Vec<Statement>>,
-    },
-    While {
-        condition: Expression,
-        body: Vec<Statement>,
-    },
-    For {
-        iterators: Vec<String>,
-        iterable: Expression,
-        body: Vec<Statement>,
-    },
-}
-
-#[derive(Debug)]
-pub enum Expression {
-    Literal(Literal),
-    Identifier(String),
-    BinaryOp {
-        left: Box<Expression>,
-        op: Operator,
-        right: Box<Expression>,
-    },
-}
-
-#[derive(Debug)]
-pub enum Literal {
-    Integer(i32),
-    Float(f64),
-    String(String),
-    Boolean(bool),
-}
-
-#[derive(Debug)]
-pub enum Operator {
-    Plus,
-    Minus,
-    Multiply,
-    Divide,
-    And,
-    Or,
-    Greater,
-    Equal,
-}
-
-#[derive(Debug)]
-pub enum Type {
-    Integer,
-    Float,
-    String,
-    Object,
+#[derive(Debug, Clone)]
+pub enum ValueType {
+    Null,
+    Number,
     Boolean,
 }
 
-#[derive(Debug)]
-pub struct Argument {
-    pub name: String,
-    pub arg_type: Type,
+pub trait RuntimeValClone {
+    fn clone_box(&self) -> Box<dyn RuntimeVal>;
 }
+
+impl<T> RuntimeValClone for T
+where
+    T: 'static + RuntimeVal + Clone,
+{
+    fn clone_box(&self) -> Box<dyn RuntimeVal> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn RuntimeVal> {
+    fn clone(&self) -> Box<dyn RuntimeVal> {
+        self.clone_box()
+    }
+}
+
+#[derive(Debug)]
+pub struct Environment {
+    parent: Option<Box<Environment>>,
+    variables: HashMap<String, Box<dyn RuntimeVal>>,
+}
+
+impl Environment {
+    pub fn new(parent: Option<Box<Environment>>) -> Self {
+        Environment {
+            parent,
+            variables: HashMap::new(),
+        }
+    }
+    
+    pub fn declare_var(&mut self, var_name: String, value: Box<dyn RuntimeVal>) -> Box<dyn RuntimeVal> {
+        if self.variables.contains_key(&var_name) {
+            panic!("Cannot declare variable {}. It is already defined.", var_name);
+        }
+        self.variables.insert(var_name.clone(), value.clone());
+        value
+    }
+    
+    pub fn assign_var(&mut self, var_name: String, value: Box<dyn RuntimeVal>) -> Box<dyn RuntimeVal> {
+        let env = self.resolve(&var_name);
+        env.variables.insert(var_name.clone(), value.clone());
+        value
+    }
+    pub fn lookup_var(&mut self, var_name: String) -> Box<dyn RuntimeVal> {
+        let env = self.resolve(&var_name);
+        env.variables.get(&var_name).unwrap().clone()
+    }
+    
+    pub fn resolve(&mut self, var_name: &str) -> &mut Environment {
+        if self.variables.contains_key(var_name) {
+            self
+        } else if let Some(ref mut parent_env) = self.parent {
+            parent_env.resolve(var_name)
+        } else {
+            panic!("Cannot resolve '{}' as it does not exist.", var_name);
+        }
+    }
+}
+
+
+pub trait RuntimeVal: Debug + RuntimeValClone  {
+    fn value_type(&self) -> ValueType;
+    fn as_any(&self) -> &dyn Any;
+}
+#[derive(Debug, Clone)]
+pub struct NullVal {
+    pub r#type: ValueType,
+    pub value: String,
+}
+
+
+impl RuntimeVal for NullVal {
+    fn value_type(&self) -> ValueType {
+        self.r#type.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl RuntimeVal for NumberVal {
+    fn value_type(&self) -> ValueType {
+        self.r#type.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+#[derive(Debug, Clone)]
+pub struct NumberVal {
+    pub r#type: ValueType,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct BooleanVal {
+    pub r#type: ValueType,
+    pub value: bool,
+}
+
+
+impl RuntimeVal for BooleanVal {
+    fn value_type(&self) -> ValueType {
+        self.r#type.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeType {
     Program,
     NumericLiteral,
+    NullLiteral,
     Identifier,
     BinaryExpression,
-    CallExpression,
-    UnaryExpression,
-    FunctionDeclaration,
 }
 
-pub trait Stmt {
+pub trait Stmt: Debug {
     fn kind(&self) -> NodeType;
+    fn value(&self) -> Option<String>;
+    fn as_any(&self) -> &dyn Any;
 }
 
+
+// Permet le downcasting d'un Box<dyn Stmt> en Box<T>
+impl dyn Stmt {
+    pub fn downcast<T: 'static>(self: Box<Self>) -> Result<Box<T>, Box<dyn Stmt>>
+    where
+        T: Stmt,
+    {
+        if self.as_any().is::<T>() {
+            let raw = Box::into_raw(self);
+            Ok(unsafe { Box::from_raw(raw as *mut T) })
+        } else {
+            Err(self)
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiteralExpr {
+    kind: NodeType,
+    value: f64,
+}
+
+impl Stmt for LiteralExpr {
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+
+    fn value(&self) -> Option<String> {
+        None
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IdentifierExpr {
+    kind: NodeType,
+    name: String,
+}
+
+impl Stmt for IdentifierExpr {
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+    fn value(&self) -> Option<String> {
+        None
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct BinaryExpr {
+    kind: NodeType,
+    left: Box<dyn Stmt>,
+    right: Box<dyn Stmt>,
+    operator: String,
+}
+
+impl Stmt for BinaryExpr{
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+    fn value(&self) -> Option<String> {
+        None
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct NullLiteral {
+    kind: NodeType,
+    value: String,
+}
+
+impl Stmt for NullLiteral{
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+    fn value(&self) -> Option<String> {
+        Option::from(self.value.clone())
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
 pub struct Program {
     kind: NodeType,
     body: Vec<Box<dyn Stmt>>,
@@ -218,374 +343,263 @@ impl Stmt for Program {
     fn kind(&self) -> NodeType {
         self.kind.clone()
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Expr;
-
-impl Stmt for Expr {
-    fn kind(&self) -> NodeType {
-        NodeType::BinaryExpression
+    fn value(&self) -> Option<String> {
+        None
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct BinaryExpr {
-    kind: NodeType,
-}
-
-impl Stmt for BinaryExpr {
-    fn kind(&self) -> NodeType {
-        self.kind.clone()
-    }
-}
-
 
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
 }
 
-
-
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, position: 0 }
+        Self { tokens, position: 0 }
     }
 
-    fn current(&self) -> Option<&Token> {
-        self.tokens.get(self.position)
+    pub fn produce_ast(&mut self) -> Program {
+        let mut program = Program::new();
+        while self.not_eof() {
+            program.body.push(self.parse_stmt());
+        }
+        program
     }
 
-    fn advance(&mut self) {
+    fn not_eof(&self) -> bool {
+        self.position < self.tokens.len() && self.tokens[self.position] != Token::EOF
+    }
+
+    fn at(&self) -> &Token {
+        &self.tokens[self.position]
+    }
+
+    fn eat(&mut self) -> Token {
+        let token = self.tokens[self.position].clone();
         self.position += 1;
+        token
     }
 
-    fn expect_token(&mut self, expected: &Token, error_message: &str) -> Result<(), String> {
-        if let Some(token) = self.current() {
-            if std::mem::discriminant(token) == std::mem::discriminant(expected) {
-                self.advance();
-                Ok(())
-            } else {
-                Err(error_message.to_string())
-            }
-        } else {
-            Err("Fin des tokens inattendue".to_string())
+    fn expect(&mut self, expected: Token, err_msg: &str) -> Token {
+        let token = self.eat();
+        if token != expected {
+            panic!("Parser Error: {}\nGot: {:?}, Expected: {:?}", err_msg, token, expected);
         }
+        token
     }
 
-    fn expect_identifier(&mut self, error_message: &str) -> Result<String, String> {
-        if let Some(Token::Identifier(id)) = self.current() {
-            let name = id.clone();
-            self.advance();
-            Ok(name)
-        } else {
-            Err(error_message.to_string())
-        }
+    fn parse_stmt(&mut self) -> Box<dyn Stmt> {
+        self.parse_expr()
     }
 
-    fn peek_is_type(&self) -> bool {
-        if let Some(Token::Identifier(id)) = self.current() {
-            matches!(id.as_str(), "Integer" | "Float" | "String" | "Object" | "Boolean")
-        } else {
-            false
-        }
+    fn parse_expr(&mut self) -> Box<dyn Stmt> {
+        self.parse_additive_expr()
     }
 
-    fn parse_type(&mut self) -> Result<Type, String> {
-        let token = self.current().cloned();
+    fn parse_additive_expr(&mut self) -> Box<dyn Stmt> {
+        let mut left = self.parse_multiplicative_expr();
 
-        if let Some(Token::Identifier(id)) = token {
-            self.advance();
-
-            match id.as_str() {
-                "Integer" => Ok(Type::Integer),
-                "Float" => Ok(Type::Float),
-                "String" => Ok(Type::String),
-                "Object" => Ok(Type::Object),
-                "Boolean" => Ok(Type::Boolean),
-                _ => Err(format!("Type inconnu : {}", id)),
-            }
-        } else {
-            Err("Type attendu".to_string())
-        }
-    }
-
-    fn parse_bracketed_identifier(&mut self, error_message: &str) -> Result<String, String> {
-        self.expect_token(&Token::LBracket, "Expected '['")?;
-        let id = self.expect_identifier(error_message)?;
-        self.expect_token(&Token::RBracket, "Expected ']'")?;
-        Ok(id)
-    }
-
-    fn parse_expression(&mut self) -> Result<Expression, String> {
-        self.parse_binary_expression(0)
-    }
-
-    fn parse_binary_expression(&mut self, precedence: u8) -> Result<Expression, String> {
-        let mut left = self.parse_primary_expression()?;
-
-        while let Some(token) = self.current() {
-            let (op_precedence, op) = match token {
-                Token::And => (1, Operator::And),
-                Token::Or => (1, Operator::Or),
-                Token::Greater => (2, Operator::Greater),
-                Token::Equal => (2, Operator::Equal),
-                Token::Slash => (3, Operator::Divide),
-                _ => break,
+        while let Token::Plus | Token::Minus = self.at() {
+            let operator = match self.eat() {
+                Token::Plus => "+".to_string(),
+                Token::Minus => "-".to_string(),
+                _ => unreachable!(),
             };
 
-            if op_precedence < precedence {
-                break;
-            }
+            let right = self.parse_multiplicative_expr();
+            left = Box::new(BinaryExpr {
+                kind: NodeType::BinaryExpression,
+                left,
+                right,
+                operator,
+            });
+        }
 
-            self.advance();
-            let right = self.parse_binary_expression(op_precedence + 1)?;
-            left = Expression::BinaryOp {
-                left: Box::new(left),
-                op,
-                right: Box::new(right),
+        left
+    }
+
+    fn parse_multiplicative_expr(&mut self) -> Box<dyn Stmt> {
+        let mut left = self.parse_primary_expr();
+
+        while let Token::Star | Token::Slash | Token::Percent = self.at() {
+            let operator = match self.eat() {
+                Token::Star => "*".to_string(),
+                Token::Slash => "/".to_string(),
+                Token::Percent => "%".to_string(),
+                _ => unreachable!(),
             };
+            let right = self.parse_primary_expr();
+
+            left = Box::new(BinaryExpr {
+                kind: NodeType::BinaryExpression,
+                left,
+                right,
+                operator,
+            });
         }
 
-        Ok(left)
+        left
     }
 
-    fn parse_primary_expression(&mut self) -> Result<Expression, String> {
-        if let Some(token) = self.current().cloned() {
-            match token {
-                Token::Identifier(id) => {
-                    self.advance();
-                    Ok(Expression::Identifier(id))
-                },
-                Token::Integer(value) => {
-                    self.advance();
-                    Ok(Expression::Literal(Literal::Integer(value)))
-                },
-                Token::Float(value) => {
-                    self.advance();
-                    Ok(Expression::Literal(Literal::Float(value)))
-                },
-                Token::StringLiteral(value) => {
-                    self.advance();
-                    Ok(Expression::Literal(Literal::String(value)))
-                },
-                Token::True => {
-                    self.advance();
-                    Ok(Expression::Literal(Literal::Boolean(true)))
-                },
-                Token::False => {
-                    self.advance();
-                    Ok(Expression::Literal(Literal::Boolean(false)))
-                },
-                Token::LParen => {
-                    self.advance();
-                    let expr = self.parse_expression()?;
-                    self.expect_token(&Token::RParen, "Expected ')'")?;
-                    Ok(expr)
-                },
-                _ => Err(format!("Unexpected token in expression: {:?}", token))
+    fn parse_primary_expr(&mut self) -> Box<dyn Stmt> {
+        match self.eat() {
+            Token::Integer(value) => Box::new(LiteralExpr {
+                kind: NodeType::NumericLiteral,
+                value: value as f64,
+            }),
+            Token::Float(value) => Box::new(LiteralExpr {
+                kind: NodeType::NumericLiteral,
+                value,
+            }),
+            Token::Identifier(name) => Box::new(IdentifierExpr {
+                kind: NodeType::Identifier,
+                name,
+            }),
+            Token::Null => Box::new(NullLiteral {
+                kind: NodeType::NullLiteral,
+                value: "null".to_string(),
+            }),
+            Token::LParen => {
+                let expr = self.parse_expr();
+                self.expect(Token::RParen, "Expected `)`.");
+                expr
             }
-        } else {
-            Err("Unexpected end of tokens in expression".to_string())
+            token => Box::new(IdentifierExpr {
+                kind: NodeType::Identifier,
+                name: "null".to_string(),
+            }),
+        }
+    }
+}
+
+pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    let binary_expr = ast_node.downcast::<BinaryExpr>()
+        .expect("Expected a BinaryExpr node");
+
+    let lhs = evaluate(binary_expr.left, env);
+    let rhs = evaluate(binary_expr.right, env);
+
+    if let (Some(lhs_num), Some(rhs_num)) = (
+        lhs.as_any().downcast_ref::<NumberVal>(),
+        rhs.as_any().downcast_ref::<NumberVal>()
+    ) {
+        return eval_numeric_binary_expr(
+            lhs_num,
+            rhs_num,
+            &binary_expr.operator,
+        );
+    }
+
+    Box::new(NullVal {
+        r#type: ValueType::Null,
+        value: "null".to_string(),
+    })
+}
+pub fn eval_numeric_binary_expr(
+    lhs: &NumberVal,
+    rhs: &NumberVal,
+    operator: &str,
+) -> Box<dyn RuntimeVal> {
+    let lhs_value = lhs.value;
+    let rhs_value = rhs.value;
+
+    let result = match operator {
+        "+" => lhs_value + rhs_value,
+        "-" => lhs_value - rhs_value,
+        "*" => lhs_value * rhs_value,
+        "/" => lhs_value / rhs_value, // TODO: Division by zero checks
+        "%" => lhs_value % rhs_value,
+        _ => panic!("Unknown binary operator: {}", operator),
+    };
+
+    Box::new(NumberVal {
+        r#type: ValueType::Number,
+        value: result,
+    })
+}
+pub fn eval_program(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    let program = ast_node.downcast::<Program>()
+        .expect("Expected a Program node");
+
+    let mut last_evaluated: Box<dyn RuntimeVal> = mk_null();
+
+    for statement in program.body {
+        // Use a reference to env instead of moving it
+        last_evaluated = evaluate(statement, env);
+    }
+
+    last_evaluated
+}
+
+pub fn tokenize(source: String) -> Vec<Token> {
+    let mut lexer = Token::lexer(&source);
+    let mut tokens: Vec<Token> = Vec::new();
+
+    while let Some(token_result) = lexer.next() {
+        match token_result {
+            Ok(token) => tokens.push(token),
+            Err(_) => {
+                eprintln!(
+                    "Lexer Error: Unexpected token at position {}",
+                    lexer.span().start
+                );
+                continue;
+            }
         }
     }
 
-    pub fn parse_statement(&mut self) -> Result<Statement, String> {
-        match self.current() {
-            Some(Token::With)   => self.parse_import(),
-            Some(Token::Obj)    => self.parse_obj_declaration(),
-            Some(Token::Func)   => self.parse_function(),
-            Some(Token::Impl)   => self.parse_implementation(),
-            Some(Token::If)     => self.parse_if_statement(),
-            Some(Token::While)  => self.parse_while_statement(),
-            Some(Token::For)    => self.parse_for_statement(),
-            Some(Token::Log)    => self.parse_print(),
-            Some(Token::LBracket) => self.parse_variable_declaration(),
-            other => Err(format!("Token inattendu : {:?}", other)),
+    tokens.push(Token::EOF);
+    tokens
+}
+
+pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    match ast_node.kind() {
+        NodeType::NumericLiteral => {
+            let literal = ast_node.as_any().downcast_ref::<LiteralExpr>()
+                .expect("Expected a LiteralExpr");
+            Box::new(NumberVal {
+                r#type: ValueType::Number,
+                value: literal.value,
+            })
+        },
+        NodeType::NullLiteral => {
+            mk_null()
+        },
+        NodeType::BinaryExpression => {
+            eval_binary_expr(ast_node, env)
+        },
+        NodeType::Program => {
+            eval_program(ast_node, env)
+        },
+        NodeType::Identifier => {
+            eval_identifier(ast_node, env)
         }
     }
+}
+
+fn eval_identifier(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    let identifier_expr = ast_node.downcast::<IdentifierExpr>()
+        .expect("Expected a BinaryExpr node");
+    let val = env.lookup_var(identifier_expr.name);
+    
+    val
+}
+
+pub fn mk_number<T: Into<f64>>(number: T) -> Box<NumberVal> {
+    Box::new(NumberVal {
+        r#type: Number,
+        value: number.into(),
+    })
+}
 
 
-    fn parse_import(&mut self) -> Result<Statement, String> {
-        self.advance(); // consume "with"
-        let name = self.parse_bracketed_identifier("Expected library or file name")?;
-        self.expect_token(&Token::Semicolon, "Expected ';' after import")?;
-        Ok(Statement::Import { lib: name.clone(), file: name })
-    }
+pub fn mk_null() -> Box<NullVal> {
+    Box::new(NullVal{ r#type: ValueType::Null, value: "null".to_string() })
+}
 
-    fn parse_obj_declaration(&mut self) -> Result<Statement, String> {
-        self.advance(); // consume "obj"
-        let name = self.parse_bracketed_identifier("Expected object name")?;
-        self.expect_token(&Token::LBrace, "Expected '{' after object name")?;
-        let mut fields = Vec::new();
-        while let Some(token) = self.current() {
-            if let Token::RBrace = token {
-                break;
-            }
-            let field_name = self.expect_identifier("Expected field name")?;
-            self.expect_token(&Token::Colon, "Expected ':' after field name")?;
-            let field_type = self.parse_type()?;
-            // Optionally consume a comma
-            if let Some(Token::Comma) = self.current() {
-                self.advance();
-            }
-            fields.push((field_name, field_type));
-        }
-        self.expect_token(&Token::RBrace, "Expected '}' after object declaration")?;
-        Ok(Statement::ObjectDeclaration { name, fields })
-    }
-
-    /// Function declaration: func [Return Type] [Name] ([Args]) { ... }
-    fn parse_function(&mut self) -> Result<Statement, String> {
-        self.advance(); // consume "func"
-        let return_type = if self.peek_is_type() {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
-        let name = self.parse_bracketed_identifier("Expected function name")?;
-        self.expect_token(&Token::LParen, "Expected '(' after function name")?;
-        let args = self.parse_arguments()?;
-        self.expect_token(&Token::RParen, "Expected ')' after arguments")?;
-        self.expect_token(&Token::LBrace, "Expected '{' before function body")?;
-        let body = self.parse_block()?;
-        Ok(Statement::Function { name, return_type, args, body })
-    }
-
-    fn parse_arguments(&mut self) -> Result<Vec<Argument>, String> {
-        let mut args = Vec::new();
-        while let Some(token) = self.current() {
-            if let Token::RParen = token {
-                break;
-            }
-            // For arguments we assume they are written as [argName]: Type
-            let arg_name = self.parse_bracketed_identifier("Expected argument name")?;
-            self.expect_token(&Token::Colon, "Expected ':' after argument name")?;
-            let arg_type = self.parse_type()?;
-            args.push(Argument { name: arg_name, arg_type });
-            if let Some(Token::Comma) = self.current() {
-                self.advance();
-            }
-        }
-        Ok(args)
-    }
-
-    fn parse_block(&mut self) -> Result<Vec<Statement>, String> {
-        let mut statements = Vec::new();
-        while let Some(token) = self.current() {
-            if let Token::RBrace = token {
-                break;
-            }
-            statements.push(self.parse_statement()?);
-        }
-        // Don't advance past the closing brace - leave it for the caller
-        Ok(statements)
-    }
-
-    /// Implementation block: impl [Name] { func ... }
-    fn parse_implementation(&mut self) -> Result<Statement, String> {
-        self.advance(); // consume "impl"
-        let name = self.parse_bracketed_identifier("Expected object name in implementation")?;
-        self.expect_token(&Token::LBrace, "Expected '{' after object name")?;
-        let mut methods = Vec::new();
-        while let Some(token) = self.current() {
-            if let Token::RBrace = token {
-                break;
-            }
-            // We expect functions inside an implementation block.
-            if let Token::Func = token {
-                let function = self.parse_function()?;
-                methods.push(function);
-            } else {
-                return Err(format!("Unexpected token in implementation block: {:?}", token));
-            }
-        }
-        self.expect_token(&Token::RBrace, "Expected '}' after implementation block")?;
-        Ok(Statement::Implementation { name, methods })
-    }
-
-    /// Print statement: log(<expression>);
-    fn parse_print(&mut self) -> Result<Statement, String> {
-        self.advance(); // consume "log"
-        self.expect_token(&Token::LParen, "Expected '(' after log")?;
-        let expr = self.parse_expression()?;
-        self.expect_token(&Token::RParen, "Expected ')' after log argument")?;
-        self.expect_token(&Token::Semicolon, "Expected ';' after log statement")?;
-        Ok(Statement::Print(expr))
-    }
-
-    /// Variable declaration: [Var Name] = <expression>;
-    fn parse_variable_declaration(&mut self) -> Result<Statement, String> {
-        let name = self.parse_bracketed_identifier("Expected variable name")?;
-        self.expect_token(&Token::Equal, "Expected '=' in variable declaration")?;
-        let value = self.parse_expression()?;
-        self.expect_token(&Token::Semicolon, "Expected ';' after variable declaration")?;
-        Ok(Statement::VariableDeclaration { name, value })
-    }
-
-    /// If statement:
-    /// if <condition> { <then_branch> } [else { <else_branch> }]
-    fn parse_if_statement(&mut self) -> Result<Statement, String> {
-        self.advance(); // consume "if"
-        let condition = self.parse_expression()?;
-        self.expect_token(&Token::LBrace, "Expected '{' after if condition")?;
-        let then_branch = self.parse_block()?;
-        self.expect_token(&Token::RBrace, "Expected '}' after if body")?;
-
-        let else_branch = if let Some(Token::Else) = self.current() {
-            self.advance(); // consume "else"
-            if let Some(Token::If) = self.current() {
-                // Handle "else if" by parsing a new if statement
-                let else_if = self.parse_if_statement()?;
-                Some(vec![else_if])
-            } else {
-                self.expect_token(&Token::LBrace, "Expected '{' after else")?;
-                let branch = self.parse_block()?;
-                self.expect_token(&Token::RBrace, "Expected '}' after else body")?;
-                Some(branch)
-            }
-        } else {
-            None
-        };
-
-        Ok(Statement::If { condition, then_branch, else_branch })
-    }
-
-    /// While loop: while (<condition>) { <body> }
-    fn parse_while_statement(&mut self) -> Result<Statement, String> {
-        self.advance(); // consume "while"
-        self.expect_token(&Token::LParen, "Expected '(' after while")?;
-        let condition = self.parse_expression()?;
-        self.expect_token(&Token::RParen, "Expected ')' after while condition")?;
-        self.expect_token(&Token::LBrace, "Expected '{' after while condition")?;
-        let body = self.parse_block()?;
-        self.expect_token(&Token::RBrace, "Expected '}' after while body")?;
-        Ok(Statement::While { condition, body })
-    }
-
-    /// For loop: for (<id1>, <id2>, ...) in <expression> { <body> }
-    fn parse_for_statement(&mut self) -> Result<Statement, String> {
-        self.advance(); // consume "for"
-        self.expect_token(&Token::LParen, "Expected '(' after for")?;
-
-        // Parse a list of iterator variables
-        let mut iterators = Vec::new();
-        iterators.push(self.expect_identifier("Expected iterator identifier")?);
-
-        // Parse additional iterator variables if any
-        while let Some(Token::Comma) = self.current() {
-            self.advance(); // consume comma
-            iterators.push(self.expect_identifier("Expected iterator identifier")?);
-        }
-
-        self.expect_token(&Token::RParen, "Expected ')' after iterator identifiers")?;
-        self.expect_token(&Token::In, "Expected 'in' after for loop iterators")?;
-        let iterable = self.parse_expression()?;
-        self.expect_token(&Token::LBrace, "Expected '{' after for loop header")?;
-        let body = self.parse_block()?;
-        self.expect_token(&Token::RBrace, "Expected '}' after for loop body")?;
-
-        Ok(Statement::For { iterators, iterable, body })
-    }
+pub fn mk_bool(b: bool) -> Box<BooleanVal> {
+    Box::new(BooleanVal{ r#type: ValueType::Boolean, value: b })
 }
