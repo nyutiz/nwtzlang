@@ -56,4 +56,4 @@ fn main() {
 }
 
 
-// Implementing Variable Declarations (LET/CONST) - Programming Language From Scratch 21:09
+//Objects & User Defined Structures - Programming Language From Scratch 9:41

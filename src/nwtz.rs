@@ -536,8 +536,8 @@ impl Parser {
         })
     }
 
-    fn parse_assignment_expr(&mut self) -> Box<dyn Stmt>{
-        let left = self.parse_additive_expr();
+    fn parse_assignment_expr(&mut self) -> Box<dyn Stmt> {
+        let left = self.parse_object_expr();
 
         if *self.at() == Token::Equal {
             self.eat();
@@ -550,6 +550,20 @@ impl Parser {
         }
 
         left
+    }
+
+    fn parse_object_expr(&mut self) -> Box<dyn Stmt> {
+        if *self.at() != Token::RBrace {
+            return self.parse_additive_expr()
+        }
+        
+        self.eat();
+        let properties: Vec<Property> = Vec::new();
+        while self.not_eof() && *self.at() != Token::LBrace{
+            
+        }
+        
+        todo!()
     }
     
     fn parse_expr(&mut self) -> Box<dyn Stmt> {
