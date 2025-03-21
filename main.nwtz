@@ -11,20 +11,20 @@ obj Human{
 
 func main(String[] args){
 
-    humans = Human[];
+    set humans = Human[];
 
-    server = new socket::server("localhost", 1234);
+    set server = new socket::server("localhost", 1234);
 
     server.start();
 
-    human = new Human("Jerome", "Dupont", 75);
+    set human = new Human("Jerome", "Dupont", 75);
 
     humans.add(human);
 
-    my_car = new Car("Tesla", "S", false);
+    set my_car = new Car("Tesla", "S", false);
 
     my_car.power();
-    mark_name = my_car.get_mark();
+    set mark_name = my_car.get_mark();
 
     log(mark_name);
 

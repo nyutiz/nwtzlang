@@ -4,6 +4,7 @@
 #![allow(unused_imports)]
 
 use std::any::Any;
+use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::io;
@@ -11,8 +12,53 @@ use std::process::exit;
 use logos::Logos;
 use regex::Regex;
 use once_cell::sync::Lazy;
-use crate::nwtz::ValueType::{Null, Number};
+use crate::nwtz::ValueType::{Boolean, Null, Number};
 
+
+pub trait Stmt: Debug {
+    fn kind(&self) -> NodeType;
+    fn value(&self) -> Option<String>;
+    fn as_any(&self) -> &dyn Any;
+}
+
+
+impl dyn Stmt {
+    pub fn downcast<T: 'static>(self: Box<Self>) -> Result<Box<T>, Box<dyn Stmt>>
+    where
+        T: Stmt,
+    {
+        if self.as_any().is::<T>() {
+            let raw = Box::into_raw(self);
+            Ok(unsafe { Box::from_raw(raw as *mut T) })
+        } else {
+            Err(self)
+        }
+    }
+}
+
+pub trait RuntimeValClone {
+    fn clone_box(&self) -> Box<dyn RuntimeVal>;
+}
+
+impl<T> RuntimeValClone for T
+where
+    T: 'static + RuntimeVal + Clone,
+{
+    fn clone_box(&self) -> Box<dyn RuntimeVal> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn RuntimeVal> {
+    fn clone(&self) -> Box<dyn RuntimeVal> {
+        self.clone_box()
+    }
+}
+
+pub trait RuntimeVal: Debug + RuntimeValClone  {
+    fn value_type(&self) -> ValueType;
+    fn as_any(&self) -> &dyn Any;
+}
 #[derive(Clone, Debug, PartialEq, Logos)]
 pub enum Token {
     #[regex(r"[ \t\n\r\f]+", logos::skip)]
@@ -43,6 +89,8 @@ pub enum Token {
     For,
     #[token("log")]
     Log,
+    #[token("set")]
+    Set,
     #[token("+")]
     Plus,
     #[token("-")]
@@ -85,10 +133,10 @@ pub enum Token {
     Float(f64),
     #[regex(r"\d+", |lex| lex.slice().parse::<i32>().unwrap())]
     Integer(i32),
-    //#[token("true")]
-    //True,
-    //#[token("false")]
-    //False,
+    #[token("true")]
+    True,
+    #[token("false")]
+    False,
     #[token("null")]
     Null,
     EOF,
@@ -101,23 +149,24 @@ pub enum ValueType {
     Boolean,
 }
 
-pub trait RuntimeValClone {
-    fn clone_box(&self) -> Box<dyn RuntimeVal>;
-}
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeType {
 
-impl<T> RuntimeValClone for T
-where
-    T: 'static + RuntimeVal + Clone,
-{
-    fn clone_box(&self) -> Box<dyn RuntimeVal> {
-        Box::new(self.clone())
-    }
-}
+    // Statements
+    Program,
+    VariableDeclaration,
 
-impl Clone for Box<dyn RuntimeVal> {
-    fn clone(&self) -> Box<dyn RuntimeVal> {
-        self.clone_box()
-    }
+    // Expressions
+    AssignmentExpr,
+
+    // Literals
+    Property,
+    ObjectLiteral,
+    NumericLiteral,
+    NullLiteral,
+    BooleanLiteral,
+    Identifier,
+    BinaryExpression,
 }
 
 #[derive(Debug)]
@@ -126,6 +175,89 @@ pub struct Environment {
     variables: HashMap<String, Box<dyn RuntimeVal>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct NullVal {
+    pub r#type: ValueType,
+    pub value: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct BooleanLiteral {
+    kind: NodeType,
+    value: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct NumberVal {
+    pub r#type: ValueType,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct BooleanVal {
+    pub r#type: ValueType,
+    pub value: bool,
+}
+
+#[derive(Debug)]
+pub struct Property {
+    kind: NodeType,
+    key: String,
+    value: Option<Box<dyn Stmt>>,
+}
+
+#[derive(Debug)]
+pub struct ObjectLiteral {
+    kind: NodeType,
+    properties: Vec<Property>,
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiteralExpr {
+    kind: NodeType,
+    value: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IdentifierExpr {
+    kind: NodeType,
+    name: String,
+}
+
+#[derive(Debug)]
+pub struct NullLiteral {
+    kind: NodeType,
+    value: String,
+}
+
+#[derive(Debug)]
+pub struct BinaryExpr {
+    kind: NodeType,
+    left: Box<dyn Stmt>,
+    right: Box<dyn Stmt>,
+    operator: String,
+}
+
+#[derive(Debug)]
+pub struct AssignmentExpr {
+    kind: NodeType,
+    assigne: Box<dyn Stmt>,
+    value: Option<Box<dyn Stmt>>,
+}
+
+#[derive(Debug)]
+pub struct Program {
+    kind: NodeType,
+    body: Vec<Box<dyn Stmt>>,
+}
+
+#[derive(Debug)]
+pub struct VariableDeclaration {
+    kind: NodeType,
+    identifier: String,
+    value: Option<Box<dyn Stmt>>,
+}
 impl Environment {
     pub fn new(parent: Option<Box<Environment>>) -> Self {
         Environment {
@@ -135,8 +267,9 @@ impl Environment {
     }
     
     pub fn declare_var(&mut self, var_name: String, value: Box<dyn RuntimeVal>) -> Box<dyn RuntimeVal> {
+        
         if self.variables.contains_key(&var_name) {
-            panic!("Cannot declare variable {}. It is already defined.", var_name);
+            //panic!("Cannot declare variable {}. It is already defined.", var_name);
         }
         self.variables.insert(var_name.clone(), value.clone());
         value
@@ -151,7 +284,6 @@ impl Environment {
         let env = self.resolve(&var_name);
         env.variables.get(&var_name).unwrap().clone()
     }
-    
     pub fn resolve(&mut self, var_name: &str) -> &mut Environment {
         if self.variables.contains_key(var_name) {
             self
@@ -162,19 +294,23 @@ impl Environment {
         }
     }
 }
-
-
-pub trait RuntimeVal: Debug + RuntimeValClone  {
-    fn value_type(&self) -> ValueType;
-    fn as_any(&self) -> &dyn Any;
+impl Program {
+    pub fn new() -> Self {
+        Self {
+            kind: NodeType::Program,
+            body: Vec::new(),
+        }
+    }
 }
-#[derive(Debug, Clone)]
-pub struct NullVal {
-    pub r#type: ValueType,
-    pub value: String,
+impl VariableDeclaration {
+    pub fn new(identifier: String, value: Option<Box<dyn Stmt>>) -> Self {
+        Self {
+            kind: NodeType::VariableDeclaration,
+            identifier,
+            value,
+        }
+    }
 }
-
-
 impl RuntimeVal for NullVal {
     fn value_type(&self) -> ValueType {
         self.r#type.clone()
@@ -184,7 +320,6 @@ impl RuntimeVal for NullVal {
         self
     }
 }
-
 impl RuntimeVal for NumberVal {
     fn value_type(&self) -> ValueType {
         self.r#type.clone()
@@ -194,19 +329,6 @@ impl RuntimeVal for NumberVal {
         self
     }
 }
-#[derive(Debug, Clone)]
-pub struct NumberVal {
-    pub r#type: ValueType,
-    pub value: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct BooleanVal {
-    pub r#type: ValueType,
-    pub value: bool,
-}
-
-
 impl RuntimeVal for BooleanVal {
     fn value_type(&self) -> ValueType {
         self.r#type.clone()
@@ -216,44 +338,11 @@ impl RuntimeVal for BooleanVal {
         self
     }
 }
-
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum NodeType {
-    Program,
-    NumericLiteral,
-    NullLiteral,
-    Identifier,
-    BinaryExpression,
+impl Stmt for BooleanLiteral {
+    fn kind(&self) -> NodeType { self.kind.clone() }
+    fn value(&self) -> Option<String> { Some(self.value.to_string()) }
+    fn as_any(&self) -> &dyn Any { self }
 }
-
-pub trait Stmt: Debug {
-    fn kind(&self) -> NodeType;
-    fn value(&self) -> Option<String>;
-    fn as_any(&self) -> &dyn Any;
-}
-
-
-// Permet le downcasting d'un Box<dyn Stmt> en Box<T>
-impl dyn Stmt {
-    pub fn downcast<T: 'static>(self: Box<Self>) -> Result<Box<T>, Box<dyn Stmt>>
-    where
-        T: Stmt,
-    {
-        if self.as_any().is::<T>() {
-            let raw = Box::into_raw(self);
-            Ok(unsafe { Box::from_raw(raw as *mut T) })
-        } else {
-            Err(self)
-        }
-    }
-}
-#[derive(Debug, Clone, PartialEq)]
-pub struct LiteralExpr {
-    kind: NodeType,
-    value: f64,
-}
-
 impl Stmt for LiteralExpr {
     fn kind(&self) -> NodeType {
         self.kind.clone()
@@ -267,13 +356,32 @@ impl Stmt for LiteralExpr {
         self
     }
 }
+impl Stmt for ObjectLiteral {
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct IdentifierExpr {
-    kind: NodeType,
-    name: String,
+    fn value(&self) -> Option<String> {
+        None
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
+impl Stmt for Property {
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
 
+    fn value(&self) -> Option<String> {
+        None
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 impl Stmt for IdentifierExpr {
     fn kind(&self) -> NodeType {
         self.kind.clone()
@@ -285,15 +393,6 @@ impl Stmt for IdentifierExpr {
         self
     }
 }
-
-#[derive(Debug)]
-pub struct BinaryExpr {
-    kind: NodeType,
-    left: Box<dyn Stmt>,
-    right: Box<dyn Stmt>,
-    operator: String,
-}
-
 impl Stmt for BinaryExpr{
     fn kind(&self) -> NodeType {
         self.kind.clone()
@@ -305,13 +404,17 @@ impl Stmt for BinaryExpr{
         self
     }
 }
-
-#[derive(Debug)]
-pub struct NullLiteral {
-    kind: NodeType,
-    value: String,
+impl Stmt for AssignmentExpr{
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+    fn value(&self) -> Option<String> {
+        None
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
-
 impl Stmt for NullLiteral{
     fn kind(&self) -> NodeType {
         self.kind.clone()
@@ -323,23 +426,18 @@ impl Stmt for NullLiteral{
         self
     }
 }
-
-#[derive(Debug)]
-pub struct Program {
-    kind: NodeType,
-    body: Vec<Box<dyn Stmt>>,
-}
-
-impl Program {
-    pub fn new() -> Self {
-        Self {
-            kind: NodeType::Program,
-            body: Vec::new(),
-        }
+impl Stmt for Program {
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+    fn value(&self) -> Option<String> {
+        None
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
-
-impl Stmt for Program {
+impl Stmt for VariableDeclaration {
     fn kind(&self) -> NodeType {
         self.kind.clone()
     }
@@ -383,6 +481,14 @@ impl Parser {
         token
     }
 
+    fn peek(&self) -> &Token {
+        if self.position + 1 < self.tokens.len() {
+            &self.tokens[self.position + 1]
+        } else {
+            &Token::EOF
+        }
+    }
+
     fn expect(&mut self, expected: Token, err_msg: &str) -> Token {
         let token = self.eat();
         if token != expected {
@@ -392,11 +498,63 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> Box<dyn Stmt> {
-        self.parse_expr()
+
+        match self.at() {
+            Token::Identifier(_) if *self.peek() == Token::Semicolon => {
+                let name = if let Token::Identifier(n) = self.eat() { n } else { unreachable!() };
+                self.eat();
+                Box::new(VariableDeclaration::new(name, None))
+            }
+            Token::Identifier(_) if *self.peek() == Token::Equal => {
+                self.parse_variable_declaration()
+            }
+            Token::LBrace => {
+                println!("Hola el caca");
+                todo!()
+            }
+            _ => self.parse_expr(),
+        }
     }
 
+    fn parse_variable_declaration(&mut self) -> Box<dyn Stmt> {
+        let identifier = match self.eat() {
+            Token::Identifier(name) => name,
+            token => panic!("Parser Error: Expected identifier, got {:?}", token),
+        };
+
+        let value = if *self.at() == Token::Equal {
+            self.eat();
+            Some(self.parse_expr())
+        } else {
+            None
+        };
+        self.expect(Token::Semicolon, "Expected semicolon after variable declaration");
+        Box::new(VariableDeclaration {
+            kind: NodeType::VariableDeclaration,
+            identifier,
+            value,
+        })
+    }
+
+    fn parse_assignment_expr(&mut self) -> Box<dyn Stmt>{
+        let left = self.parse_additive_expr();
+
+        if *self.at() == Token::Equal {
+            self.eat();
+            let value = self.parse_assignment_expr();
+            return Box::new(AssignmentExpr {
+                kind: NodeType::AssignmentExpr,
+                assigne: left,
+                value: Some(value),
+            });
+        }
+
+        left
+    }
+    
     fn parse_expr(&mut self) -> Box<dyn Stmt> {
-        self.parse_additive_expr()
+        self.parse_assignment_expr()
+        
     }
 
     fn parse_additive_expr(&mut self) -> Box<dyn Stmt> {
@@ -466,7 +624,15 @@ impl Parser {
                 let expr = self.parse_expr();
                 self.expect(Token::RParen, "Expected `)`.");
                 expr
-            }
+            },
+            Token::False => Box::new(BooleanLiteral {
+                kind: NodeType::BooleanLiteral,
+                value: false,
+            }),
+            Token::True => Box::new(BooleanLiteral {
+                kind: NodeType::BooleanLiteral,
+                value: true,
+            }),
             token => Box::new(IdentifierExpr {
                 kind: NodeType::Identifier,
                 name: "null".to_string(),
@@ -474,6 +640,91 @@ impl Parser {
         }
     }
 }
+
+
+
+pub fn tokenize(source: String) -> Vec<Token> {
+    let mut lexer = Token::lexer(&source);
+    let mut tokens: Vec<Token> = Vec::new();
+
+    while let Some(token_result) = lexer.next() {
+        match token_result {
+            Ok(token) => tokens.push(token),
+            Err(_) => {
+                eprintln!(
+                    "Lexer Error: Unexpected token at position {}",
+                    lexer.span().start
+                );
+                continue;
+            }
+        }
+    }
+
+    tokens.push(Token::EOF);
+    tokens
+}
+
+pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    match ast_node.kind() {
+        NodeType::NumericLiteral => {
+            let literal = ast_node.as_any().downcast_ref::<LiteralExpr>()
+                .expect("Expected a LiteralExpr");
+            Box::new(NumberVal {
+                r#type: ValueType::Number,
+                value: literal.value,
+            })
+        },
+        NodeType::BooleanLiteral => {
+            let bool_node = ast_node.as_any().downcast_ref::<BooleanLiteral>().unwrap();
+            Box::new(BooleanVal { r#type: Boolean, value: bool_node.value })
+        },
+        NodeType::NullLiteral => {
+            mk_null()
+        },
+        NodeType::BinaryExpression => {
+            eval_binary_expr(ast_node, env)
+        },
+        NodeType::Program => {
+            eval_program(ast_node, env)
+        },
+        NodeType::Identifier => {
+            eval_identifier(ast_node, env)
+        },
+        NodeType::VariableDeclaration => {
+            eval_var_declaration(ast_node, env)
+        },
+        NodeType::AssignmentExpr => {
+            eval_assignment(ast_node, env) 
+        },
+        
+    }
+}
+
+pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal> {
+    let assignment = node
+        .downcast::<AssignmentExpr>()
+        .expect("Expected a VariableDeclaration node");
+
+    let var_name = if let Some(ident) = assignment.assigne.as_any().downcast_ref::<IdentifierExpr>() {
+        ident.name.clone()
+    } else {
+        panic!("Invalid LHS in assignment: {:?}", assignment.assigne);
+    };
+
+    let value = evaluate(assignment.value.expect("Assignment missing RHS"), env);
+    env.assign_var(var_name, value)
+}
+pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal> {
+    let var_declaration = declaration
+        .downcast::<VariableDeclaration>()
+        .expect("Expected a VariableDeclaration node");
+    let value = match var_declaration.value {
+        Some(expr) => evaluate(expr, env),
+        None => mk_null(),
+    };
+    env.declare_var(var_declaration.identifier, value.clone())
+}
+
 
 pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let binary_expr = ast_node.downcast::<BinaryExpr>()
@@ -527,65 +778,22 @@ pub fn eval_program(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
     let mut last_evaluated: Box<dyn RuntimeVal> = mk_null();
 
     for statement in program.body {
-        // Use a reference to env instead of moving it
         last_evaluated = evaluate(statement, env);
     }
 
     last_evaluated
 }
 
-pub fn tokenize(source: String) -> Vec<Token> {
-    let mut lexer = Token::lexer(&source);
-    let mut tokens: Vec<Token> = Vec::new();
-
-    while let Some(token_result) = lexer.next() {
-        match token_result {
-            Ok(token) => tokens.push(token),
-            Err(_) => {
-                eprintln!(
-                    "Lexer Error: Unexpected token at position {}",
-                    lexer.span().start
-                );
-                continue;
-            }
-        }
-    }
-
-    tokens.push(Token::EOF);
-    tokens
-}
-
-pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
-    match ast_node.kind() {
-        NodeType::NumericLiteral => {
-            let literal = ast_node.as_any().downcast_ref::<LiteralExpr>()
-                .expect("Expected a LiteralExpr");
-            Box::new(NumberVal {
-                r#type: ValueType::Number,
-                value: literal.value,
-            })
-        },
-        NodeType::NullLiteral => {
-            mk_null()
-        },
-        NodeType::BinaryExpression => {
-            eval_binary_expr(ast_node, env)
-        },
-        NodeType::Program => {
-            eval_program(ast_node, env)
-        },
-        NodeType::Identifier => {
-            eval_identifier(ast_node, env)
-        }
-    }
-}
-
-fn eval_identifier(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+pub fn eval_identifier(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let identifier_expr = ast_node.downcast::<IdentifierExpr>()
         .expect("Expected a BinaryExpr node");
     let val = env.lookup_var(identifier_expr.name);
     
     val
+}
+
+pub fn setup_scope(env: &mut Environment) {
+    
 }
 
 pub fn mk_number<T: Into<f64>>(number: T) -> Box<NumberVal> {

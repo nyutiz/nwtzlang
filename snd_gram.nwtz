@@ -99,7 +99,7 @@ func [Return Type OR Nothing] [Name] ([Args]) {}
 
 
 // Define a variable
-[Var Name] =
+set [Var Name] =
              new Obj();
              "String text";
              45;
@@ -113,7 +113,7 @@ else if ...
 else
 
 // List / Tables
-[Name] = Obj[];              // Liste of Obj
+set [Name] = Obj[];              // Liste of Obj
 [Name].add(new Obj());
 
 // Loop (Similar to rust)
@@ -121,7 +121,7 @@ for (i, token) in tokens{
     log("Token : {}" + token.value + " at index : {}" + i);
 }
 
-i = 0;
+set i = 0;
 while (i <= 50){
     i++;
 }
