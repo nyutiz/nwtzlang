@@ -21,12 +21,15 @@ fn main() {
     //env.declare_var("true".to_string(), mk_bool(true));
     //env.declare_var("false".to_string(), mk_bool(false));
 
+    env.declare_var("null".to_string(), mk_null());
+    env.declare_var("true".to_string(), mk_bool(true));
+    env.declare_var("false".to_string(), mk_bool(false));
 
     env.declare_var(
         "print".to_string(),
         mk_native_fn(Arc::new(|args, _env| {
             for arg in args { println!("{:#?}", arg); }
-            mk_null()
+            mk_number(0)
         })),
     );
 

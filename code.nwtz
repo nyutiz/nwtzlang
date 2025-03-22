@@ -1,11 +1,7 @@
-x = time();
 
-print(x);
-
-fn add (x, y){
+fn add (x,y) {
     result = x + y;
-    print(result);
     result
 }
 
-add(5,5);
+print(add(5, 8));

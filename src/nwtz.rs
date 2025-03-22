@@ -17,14 +17,11 @@ use std::sync::Arc;
 use crate::nwtz::NodeType::Identifier;
 use crate::nwtz::Token::{LBrace, RBrace, RBracket};
 
-pub trait Stmt: Debug {
+pub trait Stmt: Debug + StmtClone {
     fn kind(&self) -> NodeType;
     fn value(&self) -> Option<String>;
     fn as_any(&self) -> &dyn Any;
 }
-
-
-
 impl dyn Stmt {
     pub fn downcast<T: 'static>(self: Box<Self>) -> Result<Box<T>, Box<dyn Stmt>>
     where
@@ -38,6 +35,26 @@ impl dyn Stmt {
         }
     }
 }
+
+pub trait StmtClone {
+    fn clone_box(&self) -> Box<dyn Stmt>;
+}
+
+impl<T> StmtClone for T
+where
+    T: 'static + Stmt + Clone,
+{
+    fn clone_box(&self) -> Box<dyn Stmt> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn Stmt> {
+    fn clone(&self) -> Box<dyn Stmt> {
+        self.clone_box()
+    }
+}
+
 
 pub trait RuntimeValClone {
     fn clone_box(&self) -> Box<dyn RuntimeVal>;
@@ -222,6 +239,7 @@ pub struct ObjectVal {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct Property {
     kind: NodeType,
     key: String,
@@ -229,6 +247,7 @@ pub struct Property {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct ObjectLiteral {
     kind: NodeType,
     properties: Vec<Property>,
@@ -248,12 +267,14 @@ pub struct IdentifierExpr {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct NullLiteral {
     kind: NodeType,
     value: String,
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct BinaryExpr {
     kind: NodeType,
     left: Box<dyn Stmt>,
@@ -262,6 +283,7 @@ pub struct BinaryExpr {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct AssignmentExpr {
     kind: NodeType,
     assigne: Box<dyn Stmt>,
@@ -269,6 +291,7 @@ pub struct AssignmentExpr {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct MemberExpr {
     kind: NodeType,
     object: Box<dyn Stmt>,
@@ -277,6 +300,7 @@ pub struct MemberExpr {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct CallExpr {
     kind: NodeType,
     caller: Box<dyn Stmt>,
@@ -284,12 +308,14 @@ pub struct CallExpr {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct Program {
     kind: NodeType,
     body: Vec<Box<dyn Stmt>>,
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct VariableDeclaration {
     kind: NodeType,
     identifier: String,
@@ -297,6 +323,7 @@ pub struct VariableDeclaration {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct FunctionDeclaration {
     kind: NodeType,
     parameters: Vec<String>,
@@ -1147,27 +1174,54 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
         .downcast::<CallExpr>()
         .expect("Expected CallExpr");
 
+    // Évaluer les arguments
     let args: Vec<Box<dyn RuntimeVal>> = call
         .args
         .into_iter()
         .map(|arg| evaluate(arg, env))
         .collect();
 
+    // Évaluer le callee (fonction à appeler)
     let callee = evaluate(call.caller, env);
 
+    // Appel d’une native function
     if let Some(native) = callee.as_any().downcast_ref::<NativeFnValue>() {
-        (native.call)(args, env)
+        return (native.call)(args, env);
     }
-    else if let Some(func) = callee.as_any().downcast_ref::<FunctionVal>()   {
+
+    // Appel d’une fonction user‑defined
+    if let Some(func) = callee.as_any().downcast_ref::<FunctionVal>() {
+        // Reconstruire l’environnement lexical
         let decl_env: &mut Environment = unsafe { &mut *func.declaration_env };
-        let mut scope = Environment::new(Some(Box::new(decl_env.clone())));       
-        
-        todo!()
+        let mut scope = Environment::new(Some(Box::new(decl_env.clone())));
+
+        // Vérifier l’arity
+        if args.len() != func.parameters.len() {
+            panic!(
+                "Function `{}` expected {} arguments but got {}",
+                func.name,
+                func.parameters.len(),
+                args.len()
+            );
+        }
+
+        // Déclarer les paramètres
+        for (param, arg_val) in func.parameters.iter().zip(args.into_iter()) {
+            scope.declare_var(param.clone(), arg_val);
+        }
+
+        let mut result: Box<dyn RuntimeVal> = mk_null();
+        for stmt in func.body.iter() {
+            result = evaluate(stmt.clone(), &mut scope);
+        }
+
+
+        return result;
     }
-    else {
-        panic!("Cannot call value that is not a function: {:?}", callee);
-    }
+
+    panic!("Cannot call value that is not a function: {:?}", callee);
 }
+
 
 pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal>{
     let func = node
