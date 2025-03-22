@@ -1,1 +1,10 @@
-{
+x = 45;
+
+time();
+print(x);
+
+fn add (x, y){
+    result = x + y;
+    print(result);
+    result
+}

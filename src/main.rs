@@ -6,7 +6,9 @@
 
 use std::{fs, io};
 use std::io::Write;
-use crate::nwtz::{evaluate, mk_bool, mk_null, mk_number, tokenize, Environment, NumberVal, Parser, ValueType};
+use std::sync::Arc;
+use std::time::SystemTime;
+use crate::nwtz::{evaluate, mk_bool, mk_native_fn, mk_null, mk_number, tokenize, Environment, FunctionCall, NumberVal, Parser, RuntimeVal, ValueType};
 
 mod nwtz;
 
@@ -19,20 +21,24 @@ fn main() {
     //env.declare_var("true".to_string(), mk_bool(true));
     //env.declare_var("false".to_string(), mk_bool(false));
 
-    let file = fs::read_to_string("code.nwtz").unwrap().lines().map(String::from).collect::<Vec<String>>();
-    //println!("{}", file);
-    
-    for line in file.iter() {
-        let eval = evaluate(Box::new(Parser::new(tokenize(line.to_string())).produce_ast()), &mut env);
-        println!("{:?}", eval);
 
-    }
-    
-    
-    
-    /*
+    env.declare_var(
+        "print".to_string(),
+        mk_native_fn(Arc::new(|args, _env| {
+            for arg in args { println!("{:?}", arg); }
+            mk_null()
+        })),
+    );
+
+    env.declare_var(
+        "time".to_string(),
+        mk_native_fn(Arc::new(|args: Vec<Box<dyn RuntimeVal>>, _scope: &mut Environment| {
+            mk_number(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as f64 / 1000.0)
+        })),
+    );
+
     loop {
-    
+
         print!("> ");
         io::stdout().flush().unwrap();
 
@@ -41,8 +47,12 @@ fn main() {
         let input = input.trim();
 
         if input.is_empty() || input.contains("exit") {
-            println!("Exiting");
-            break;
+
+            let file = fs::read_to_string("code.nwtz").unwrap();
+            let tokens = tokenize(file.clone());
+            let mut parser = Parser::new(tokens);
+            let ast = parser.produce_ast();
+            let result = evaluate(Box::new(ast), &mut env);
         }
 
         let tokens = tokenize(input.to_string());
@@ -50,9 +60,9 @@ fn main() {
         let program = parser.produce_ast();
 
         let res = evaluate(Box::new(program), &mut env);
-        println!("{:#?}", res);
+        //println!("{:#?}", res);
     }
-     */
+
 }
 
 

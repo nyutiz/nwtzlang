@@ -12,8 +12,8 @@ use std::process::exit;
 use logos::Logos;
 use regex::Regex;
 use once_cell::sync::Lazy;
-use crate::nwtz::ValueType::{Boolean, Null, Number};
-
+use crate::nwtz::ValueType::{Boolean, NativeFn, Null, Number};
+use std::sync::Arc;
 
 pub trait Stmt: Debug {
     fn kind(&self) -> NodeType;
@@ -45,7 +45,7 @@ where
     T: 'static + RuntimeVal + Clone,
 {
     fn clone_box(&self) -> Box<dyn RuntimeVal> {
-        Box::new(self.clone())
+        Box::from(self.clone())
     }
 }
 
@@ -59,6 +59,13 @@ pub trait RuntimeVal: Debug + RuntimeValClone  {
     fn value_type(&self) -> ValueType;
     fn as_any(&self) -> &dyn Any;
 }
+
+impl std::fmt::Debug for NativeFnValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<native-fn>")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Logos)]
 pub enum Token {
     #[regex(r"[ \t\n\r\f]+", logos::skip)]
@@ -147,6 +154,8 @@ pub enum ValueType {
     Null,
     Number,
     Boolean,
+    Object,
+    NativeFn,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -158,7 +167,8 @@ pub enum NodeType {
 
     // Expressions
     AssignmentExpr,
-
+    MemberExpr,
+    CallExpr,
     // Literals
     Property,
     ObjectLiteral,
@@ -169,7 +179,7 @@ pub enum NodeType {
     BinaryExpression,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Environment {
     parent: Option<Box<Environment>>,
     variables: HashMap<String, Box<dyn RuntimeVal>>,
@@ -197,6 +207,11 @@ pub struct NumberVal {
 pub struct BooleanVal {
     pub r#type: ValueType,
     pub value: bool,
+}
+#[derive(Debug, Clone)]
+pub struct ObjectVal {
+    pub r#type: ValueType,
+    pub properties: HashMap<String, Box<dyn RuntimeVal>>,
 }
 
 #[derive(Debug)]
@@ -247,6 +262,21 @@ pub struct AssignmentExpr {
 }
 
 #[derive(Debug)]
+pub struct MemberExpr {
+    kind: NodeType,
+    object: Box<dyn Stmt>,
+    property: Box<dyn Stmt>,
+    computed: bool,
+}
+
+#[derive(Debug)]
+pub struct CallExpr {
+    kind: NodeType,
+    caller: Box<dyn Stmt>,
+    args: Vec<Box<dyn Stmt>>,
+}
+
+#[derive(Debug)]
 pub struct Program {
     kind: NodeType,
     body: Vec<Box<dyn Stmt>>,
@@ -257,6 +287,14 @@ pub struct VariableDeclaration {
     kind: NodeType,
     identifier: String,
     value: Option<Box<dyn Stmt>>,
+}
+
+pub type FunctionCall =
+Arc<dyn Fn(Vec<Box<dyn RuntimeVal>>, &mut Environment) -> Box<dyn RuntimeVal> + Send + Sync>;
+#[derive(Clone)]
+pub struct NativeFnValue {
+    pub value_type: ValueType,
+    pub call: FunctionCall,
 }
 impl Environment {
     pub fn new(parent: Option<Box<Environment>>) -> Self {
@@ -329,7 +367,25 @@ impl RuntimeVal for NumberVal {
         self
     }
 }
+
+impl RuntimeVal for NativeFnValue {
+    fn value_type(&self) -> ValueType {
+        self.value_type.clone()
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 impl RuntimeVal for BooleanVal {
+    fn value_type(&self) -> ValueType {
+        self.r#type.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+impl RuntimeVal for ObjectVal {
     fn value_type(&self) -> ValueType {
         self.r#type.clone()
     }
@@ -357,6 +413,32 @@ impl Stmt for LiteralExpr {
     }
 }
 impl Stmt for ObjectLiteral {
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+
+    fn value(&self) -> Option<String> {
+        None
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+impl Stmt for MemberExpr {
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+
+    fn value(&self) -> Option<String> {
+        None
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+impl Stmt for CallExpr {
     fn kind(&self) -> NodeType {
         self.kind.clone()
     }
@@ -481,6 +563,15 @@ impl Parser {
         token
     }
 
+    fn eat_if(&mut self, expected: Token) -> bool {
+        if *self.at() == expected {
+            self.eat();
+            true
+        } else {
+            false
+        }
+    }
+
     fn peek(&self) -> &Token {
         if self.position + 1 < self.tokens.len() {
             &self.tokens[self.position + 1]
@@ -503,15 +594,12 @@ impl Parser {
             Token::Identifier(_) if *self.peek() == Token::Semicolon => {
                 let name = if let Token::Identifier(n) = self.eat() { n } else { unreachable!() };
                 self.eat();
-                Box::new(VariableDeclaration::new(name, None))
+                Box::from(VariableDeclaration::new(name, None))
             }
             Token::Identifier(_) if *self.peek() == Token::Equal => {
                 self.parse_variable_declaration()
             }
-            Token::LBrace => {
-                println!("Hola el caca");
-                todo!()
-            }
+
             _ => self.parse_expr(),
         }
     }
@@ -529,7 +617,7 @@ impl Parser {
             None
         };
         self.expect(Token::Semicolon, "Expected semicolon after variable declaration");
-        Box::new(VariableDeclaration {
+        Box::from(VariableDeclaration {
             kind: NodeType::VariableDeclaration,
             identifier,
             value,
@@ -542,7 +630,7 @@ impl Parser {
         if *self.at() == Token::Equal {
             self.eat();
             let value = self.parse_assignment_expr();
-            return Box::new(AssignmentExpr {
+            return Box::from(AssignmentExpr {
                 kind: NodeType::AssignmentExpr,
                 assigne: left,
                 value: Some(value),
@@ -553,19 +641,60 @@ impl Parser {
     }
 
     fn parse_object_expr(&mut self) -> Box<dyn Stmt> {
-        if *self.at() != Token::RBrace {
+        if *self.at() != Token::LBrace {
             return self.parse_additive_expr()
         }
-        
+
         self.eat();
-        let properties: Vec<Property> = Vec::new();
-        while self.not_eof() && *self.at() != Token::LBrace{
-            
+        let mut properties: Vec<Property> = Vec::new();
+        while self.not_eof() && *self.at() != Token::RBrace{
+            let key = if let Token::Identifier(name) = self.eat() {
+                name
+            } else {
+                panic!("Parser Error: Object literal key expected, got {:?}", self.at());
+            };
+
+            if *self.at() == Token::Comma{
+                self.eat();
+                properties.push(Property {
+                    kind: NodeType::Property,
+                    key,
+                    value: None,
+                });
+                continue
+            }
+            else if *self.at() == Token::RBrace{
+                properties.push(Property {
+                    kind: NodeType::Property,
+                    key,
+                    value: None,
+                });
+                continue
+            }
+
+            self.expect(Token::Colon, "Missing colon following identifier in ObjectExpr");
+
+            let value = self.parse_expr();
+
+            properties.push(Property{
+                kind: NodeType::Property,
+                key,
+                value: Option::from(value),
+            });
+
+            if *self.at() != Token::RBrace{
+                self.expect(Token::Comma, "Expected comma or Closing Bracket following Property");
+            }
+
         }
-        
-        todo!()
+
+        self.expect(Token::RBrace, "Object literal missing closing brace");
+        Box::from(ObjectLiteral{
+            kind: NodeType::ObjectLiteral,
+            properties,
+        })
     }
-    
+
     fn parse_expr(&mut self) -> Box<dyn Stmt> {
         self.parse_assignment_expr()
         
@@ -582,7 +711,7 @@ impl Parser {
             };
 
             let right = self.parse_multiplicative_expr();
-            left = Box::new(BinaryExpr {
+            left = Box::from(BinaryExpr {
                 kind: NodeType::BinaryExpression,
                 left,
                 right,
@@ -594,7 +723,7 @@ impl Parser {
     }
 
     fn parse_multiplicative_expr(&mut self) -> Box<dyn Stmt> {
-        let mut left = self.parse_primary_expr();
+        let mut left = self.parse_call_member_expr();
 
         while let Token::Star | Token::Slash | Token::Percent = self.at() {
             let operator = match self.eat() {
@@ -603,9 +732,9 @@ impl Parser {
                 Token::Percent => "%".to_string(),
                 _ => unreachable!(),
             };
-            let right = self.parse_primary_expr();
+            let right = self.parse_call_member_expr();
 
-            left = Box::new(BinaryExpr {
+            left = Box::from(BinaryExpr {
                 kind: NodeType::BinaryExpression,
                 left,
                 right,
@@ -616,21 +745,111 @@ impl Parser {
         left
     }
 
+    fn parse_call_member_expr(&mut self) -> Box<dyn Stmt>{
+        let member = self.parse_member_expr();
+
+        if *self.at() == Token::LParen{
+            return self.parse_call_expr(member)
+        }
+
+        member
+    }
+
+    fn parse_call_expr(&mut self, caller: Box<dyn Stmt>) -> Box<dyn Stmt>{
+
+        let mut call_expr = Box::from(CallExpr{
+            kind: NodeType::CallExpr,
+            caller,
+            args: self.parse_args(),
+        });
+
+        if *self.at() == Token::LParen{
+            call_expr = self.parse_call_expr(call_expr).downcast().unwrap();
+        }
+
+        call_expr
+    }
+
+    fn parse_args(&mut self) -> Vec<Box<dyn Stmt>>{
+
+        self.expect(Token::LParen, "Expected open parenthesis");
+        let args = match *self.at() {
+            Token::RParen => {
+                Vec::new()
+            }
+            _ => {
+                self.parse_arguments_list()
+            }
+        };
+
+        self.expect(Token::RParen, "Missing close parenthesis");
+
+        args
+    }
+
+    fn parse_arguments_list(&mut self) -> Vec<Box<dyn Stmt>>{
+
+        let mut args = Vec::new();
+        args.insert(0, self.parse_assignment_expr());
+
+        while let Token::Comma = self.at() {
+            self.eat();
+            args.push(self.parse_assignment_expr());
+        }
+
+
+        args
+    }
+
+    fn parse_member_expr(&mut self) -> Box<dyn Stmt>{
+
+        let mut object = self.parse_primary_expr();
+
+        while *self.at() == Token::Dot || *self.at() == Token::LBracket {
+            let operator = self.eat();
+            let property: Box<dyn Stmt>;
+            let computed;
+
+            if operator == Token::Dot {
+                computed = false;
+                property = self.parse_primary_expr();
+                
+                if property.kind() != NodeType::Identifier {
+                    panic!("Cannot use dot operator without right hand side being a identifier {:?}", self.at());
+                }
+            } else { 
+                computed = true;
+                property = self.parse_expr();
+                self.expect(Token::RBracket, "Missing closing bracket in computed value");
+            }
+
+            object = Box::from(MemberExpr{
+                kind: NodeType::MemberExpr,
+                object,
+                property,
+                computed,
+            });
+        }
+        
+        object
+    }
+
+
     fn parse_primary_expr(&mut self) -> Box<dyn Stmt> {
         match self.eat() {
-            Token::Integer(value) => Box::new(LiteralExpr {
+            Token::Integer(value) => Box::from(LiteralExpr {
                 kind: NodeType::NumericLiteral,
                 value: value as f64,
             }),
-            Token::Float(value) => Box::new(LiteralExpr {
+            Token::Float(value) => Box::from(LiteralExpr {
                 kind: NodeType::NumericLiteral,
                 value,
             }),
-            Token::Identifier(name) => Box::new(IdentifierExpr {
+            Token::Identifier(name) => Box::from(IdentifierExpr {
                 kind: NodeType::Identifier,
                 name,
             }),
-            Token::Null => Box::new(NullLiteral {
+            Token::Null => Box::from(NullLiteral {
                 kind: NodeType::NullLiteral,
                 value: "null".to_string(),
             }),
@@ -639,15 +858,15 @@ impl Parser {
                 self.expect(Token::RParen, "Expected `)`.");
                 expr
             },
-            Token::False => Box::new(BooleanLiteral {
+            Token::False => Box::from(BooleanLiteral {
                 kind: NodeType::BooleanLiteral,
                 value: false,
             }),
-            Token::True => Box::new(BooleanLiteral {
+            Token::True => Box::from(BooleanLiteral {
                 kind: NodeType::BooleanLiteral,
                 value: true,
             }),
-            token => Box::new(IdentifierExpr {
+            token => Box::from(IdentifierExpr {
                 kind: NodeType::Identifier,
                 name: "null".to_string(),
             }),
@@ -683,14 +902,14 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
         NodeType::NumericLiteral => {
             let literal = ast_node.as_any().downcast_ref::<LiteralExpr>()
                 .expect("Expected a LiteralExpr");
-            Box::new(NumberVal {
+            Box::from(NumberVal {
                 r#type: ValueType::Number,
                 value: literal.value,
             })
         },
         NodeType::BooleanLiteral => {
             let bool_node = ast_node.as_any().downcast_ref::<BooleanLiteral>().unwrap();
-            Box::new(BooleanVal { r#type: Boolean, value: bool_node.value })
+            Box::from(BooleanVal { r#type: Boolean, value: bool_node.value })
         },
         NodeType::NullLiteral => {
             mk_null()
@@ -710,7 +929,13 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
         NodeType::AssignmentExpr => {
             eval_assignment(ast_node, env) 
         },
-        
+        NodeType::ObjectLiteral => {
+            eval_object_expr(ast_node, env)
+        },
+        NodeType::CallExpr => {
+            eval_call_expr(ast_node, env)
+        },
+        _ => panic!("This ast node has not yet been setup for interpretation {:#?}", ast_node),
     }
 }
 
@@ -758,8 +983,8 @@ pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
         );
     }
 
-    Box::new(NullVal {
-        r#type: ValueType::Null,
+    Box::from(NullVal {
+        r#type: Null,
         value: "null".to_string(),
     })
 }
@@ -780,8 +1005,8 @@ pub fn eval_numeric_binary_expr(
         _ => panic!("Unknown binary operator: {}", operator),
     };
 
-    Box::new(NumberVal {
-        r#type: ValueType::Number,
+    Box::from(NumberVal {
+        r#type: Number,
         value: result,
     })
 }
@@ -791,27 +1016,69 @@ pub fn eval_program(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
 
     let mut last_evaluated: Box<dyn RuntimeVal> = mk_null();
 
-    for statement in program.body {
-        last_evaluated = evaluate(statement, env);
+    for stmt in program.body.into_iter().filter(|s| {
+        !(matches!(s.kind(), NodeType::Identifier) && s.as_any().downcast_ref::<IdentifierExpr>().unwrap().name == "null")
+    }) {
+        last_evaluated = evaluate(stmt, env);
     }
+
 
     last_evaluated
 }
 
 pub fn eval_identifier(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let identifier_expr = ast_node.downcast::<IdentifierExpr>()
-        .expect("Expected a BinaryExpr node");
+        .expect("Expected a IdentifierExpr node");
     let val = env.lookup_var(identifier_expr.name);
     
     val
 }
 
-pub fn setup_scope(env: &mut Environment) {
-    
+pub fn eval_object_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    let obj = node
+        .downcast::<ObjectLiteral>()
+        .expect("Expected ObjectLiteral");
+
+    let mut props: HashMap<String, Box<dyn RuntimeVal>> = HashMap::new();
+
+    for Property { key, value, .. } in obj.properties {
+        let runtime_val = if let Some(expr) = value {
+            evaluate(expr, env)
+        } else {
+            env.lookup_var(key.clone())
+        };
+        props.insert(key, runtime_val);
+    }
+
+    Box::from(ObjectVal {
+        r#type: ValueType::Object,
+        properties: props,
+    })
+}
+pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    let call = node
+        .downcast::<CallExpr>()
+        .expect("Expected CallExpr");
+
+    let args: Vec<Box<dyn RuntimeVal>> = call
+        .args
+        .into_iter()
+        .map(|arg| evaluate(arg, env))
+        .collect();
+
+    let callee = evaluate(call.caller, env);
+
+    if let Some(native) = callee.as_any().downcast_ref::<NativeFnValue>() {
+        (native.call)(args, env)
+    } else {
+        panic!("Cannot call value that is not a function: {:?}", callee);
+    }
 }
 
+
+
 pub fn mk_number<T: Into<f64>>(number: T) -> Box<NumberVal> {
-    Box::new(NumberVal {
+    Box::from(NumberVal {
         r#type: Number,
         value: number.into(),
     })
@@ -819,9 +1086,16 @@ pub fn mk_number<T: Into<f64>>(number: T) -> Box<NumberVal> {
 
 
 pub fn mk_null() -> Box<NullVal> {
-    Box::new(NullVal{ r#type: ValueType::Null, value: "null".to_string() })
+    Box::from(NullVal{ r#type: ValueType::Null, value: "null".to_string() })
 }
 
 pub fn mk_bool(b: bool) -> Box<BooleanVal> {
-    Box::new(BooleanVal{ r#type: ValueType::Boolean, value: b })
+    Box::from(BooleanVal{ r#type: ValueType::Boolean, value: b })
+}
+
+pub fn mk_native_fn(call: FunctionCall) -> Box<NativeFnValue> {
+    Box::from(NativeFnValue{ 
+        value_type: NativeFn, 
+        call 
+    })
 }

@@ -95,7 +95,7 @@ impl [Name] {}
 
 
 // Functions (to return something dont put ';')
-func [Return Type OR Nothing] [Name] ([Args]) {}
+fn [Return Type OR Nothing] [Name] ([Args]) {}
 
 
 // Define a variable

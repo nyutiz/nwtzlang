@@ -9,7 +9,7 @@ obj Human{
     age: int,
 }
 
-func main(String[] args){
+fn main(String[] args){
 
     set humans = Human[];
 
