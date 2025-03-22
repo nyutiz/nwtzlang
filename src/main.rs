@@ -25,7 +25,7 @@ fn main() {
     env.declare_var(
         "print".to_string(),
         mk_native_fn(Arc::new(|args, _env| {
-            for arg in args { println!("{:?}", arg); }
+            for arg in args { println!("{:#?}", arg); }
             mk_null()
         })),
     );
@@ -66,4 +66,4 @@ fn main() {
 }
 
 
-//Objects & User Defined Structures - Programming Language From Scratch 9:41
+//User Defined Functions & Closures - Programming Language From Scratch  27:16

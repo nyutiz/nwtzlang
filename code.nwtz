@@ -1,6 +1,5 @@
-x = 45;
+x = time();
 
-time();
 print(x);
 
 fn add (x, y){
@@ -8,3 +7,5 @@ fn add (x, y){
     print(result);
     result
 }
+
+add(5,5);

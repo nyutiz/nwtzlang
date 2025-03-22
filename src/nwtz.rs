@@ -14,12 +14,15 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 use crate::nwtz::ValueType::{Boolean, NativeFn, Null, Number};
 use std::sync::Arc;
+use crate::nwtz::NodeType::Identifier;
+use crate::nwtz::Token::{LBrace, RBrace, RBracket};
 
 pub trait Stmt: Debug {
     fn kind(&self) -> NodeType;
     fn value(&self) -> Option<String>;
     fn as_any(&self) -> &dyn Any;
 }
+
 
 
 impl dyn Stmt {
@@ -74,13 +77,13 @@ pub enum Token {
     With,
     #[token("obj")]
     Obj,
-    #[token("func")]
-    Func,
+    #[token("fn")]
+    Fn,
     #[token("impl")]
     Impl,
     #[token("if")]
     If,
-    #[token("else")]
+    #[token("els")]
     Else,
     #[token("new")]
     New,
@@ -88,8 +91,8 @@ pub enum Token {
     And,
     #[token("or")]
     Or,
-    #[token("while")]
-    While,
+    #[token("whl")]
+    Whl,
     #[token("in")]
     In,
     #[token("for")]
@@ -132,6 +135,8 @@ pub enum Token {
     RBracket,
     #[token(">")]
     Greater,
+    #[token("<")]
+    Lower,
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Identifier(String),
     #[regex(r#""([^"\\]|\\.)*""#, |lex| lex.slice().to_string())]
@@ -156,6 +161,7 @@ pub enum ValueType {
     Boolean,
     Object,
     NativeFn,
+    Function,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -164,6 +170,7 @@ pub enum NodeType {
     // Statements
     Program,
     VariableDeclaration,
+    FunctionDeclaration,
 
     // Expressions
     AssignmentExpr,
@@ -289,6 +296,23 @@ pub struct VariableDeclaration {
     value: Option<Box<dyn Stmt>>,
 }
 
+#[derive(Debug)]
+pub struct FunctionDeclaration {
+    kind: NodeType,
+    parameters: Vec<String>,
+    name: String,
+    body: Vec<Box<dyn Stmt>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionVal {
+    value_type: ValueType,
+    name: String,
+    parameters: Vec<String>,
+    declaration_env: *mut Environment,
+    body: Arc<Vec<Box<dyn Stmt>>>,
+}
+
 pub type FunctionCall =
 Arc<dyn Fn(Vec<Box<dyn RuntimeVal>>, &mut Environment) -> Box<dyn RuntimeVal> + Send + Sync>;
 #[derive(Clone)]
@@ -376,6 +400,15 @@ impl RuntimeVal for NativeFnValue {
         self
     }
 }
+
+impl RuntimeVal for FunctionVal {
+    fn value_type(&self) -> ValueType {
+        self.value_type.clone()
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 impl RuntimeVal for BooleanVal {
     fn value_type(&self) -> ValueType {
         self.r#type.clone()
@@ -398,6 +431,19 @@ impl Stmt for BooleanLiteral {
     fn kind(&self) -> NodeType { self.kind.clone() }
     fn value(&self) -> Option<String> { Some(self.value.to_string()) }
     fn as_any(&self) -> &dyn Any { self }
+}
+impl Stmt for FunctionDeclaration {
+    fn kind(&self) -> NodeType { self.kind.clone() }
+    fn value(&self) -> Option<String> {
+        None
+    }    fn as_any(&self) -> &dyn Any { self }
+}
+
+impl Stmt for FunctionVal {
+    fn kind(&self) -> NodeType { NodeType::FunctionDeclaration }
+    fn value(&self) -> Option<String> {
+        None
+    }    fn as_any(&self) -> &dyn Any { self }
 }
 impl Stmt for LiteralExpr {
     fn kind(&self) -> NodeType {
@@ -599,11 +645,49 @@ impl Parser {
             Token::Identifier(_) if *self.peek() == Token::Equal => {
                 self.parse_variable_declaration()
             }
-
+            Token::Fn => {
+                self.parse_fn_declaration()
+            }
             _ => self.parse_expr(),
         }
     }
 
+
+    fn parse_fn_declaration(&mut self) -> Box<dyn Stmt> {
+
+        self.eat();
+
+        // parse function name
+        let name = if let Token::Identifier(name) = self.eat() {
+            name
+        } else {
+            panic!("Expected function name following fn keyword");
+        };
+
+        let args = self.parse_args();
+        let mut params = Vec::new();
+        for arg in args {
+            if let Some(ident) = arg.as_any().downcast_ref::<IdentifierExpr>() {
+                params.push(ident.name.clone());
+            } else {
+                panic!("Inside function declaration expected parameters to be identifiers");
+            }
+        }
+
+        self.expect(LBrace, "Expected function body following declaration");
+        let mut body = Vec::new();
+        while self.not_eof() && *self.at() != RBrace {
+            body.push(self.parse_stmt());
+        }
+        self.expect(RBrace, "Closing brace expected inside function declaration");
+
+        Box::from(FunctionDeclaration{
+            kind: NodeType::FunctionDeclaration,
+            parameters: params,
+            name,
+            body,
+        })
+    }
     fn parse_variable_declaration(&mut self) -> Box<dyn Stmt> {
         let identifier = match self.eat() {
             Token::Identifier(name) => name,
@@ -813,11 +897,11 @@ impl Parser {
             if operator == Token::Dot {
                 computed = false;
                 property = self.parse_primary_expr();
-                
+
                 if property.kind() != NodeType::Identifier {
                     panic!("Cannot use dot operator without right hand side being a identifier {:?}", self.at());
                 }
-            } else { 
+            } else {
                 computed = true;
                 property = self.parse_expr();
                 self.expect(Token::RBracket, "Missing closing bracket in computed value");
@@ -830,7 +914,7 @@ impl Parser {
                 computed,
             });
         }
-        
+
         object
     }
 
@@ -920,7 +1004,7 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
         NodeType::Program => {
             eval_program(ast_node, env)
         },
-        NodeType::Identifier => {
+        Identifier => {
             eval_identifier(ast_node, env)
         },
         NodeType::VariableDeclaration => {
@@ -934,6 +1018,9 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
         },
         NodeType::CallExpr => {
             eval_call_expr(ast_node, env)
+        },
+        NodeType::FunctionDeclaration => {
+            eval_function_declaration(ast_node, env)
         },
         _ => panic!("This ast node has not yet been setup for interpretation {:#?}", ast_node),
     }
@@ -1070,11 +1157,35 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
 
     if let Some(native) = callee.as_any().downcast_ref::<NativeFnValue>() {
         (native.call)(args, env)
-    } else {
+    }
+    else if let Some(func) = callee.as_any().downcast_ref::<FunctionVal>()   {
+        let decl_env: &mut Environment = unsafe { &mut *func.declaration_env };
+        let mut scope = Environment::new(Some(Box::new(decl_env.clone())));       
+        
+        todo!()
+    }
+    else {
         panic!("Cannot call value that is not a function: {:?}", callee);
     }
 }
 
+pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal>{
+    let func = node
+        .downcast::<FunctionDeclaration>()
+        .expect("Expected FunctionDeclaration");
+
+    let function = FunctionVal{
+        value_type: ValueType::Function,
+        parameters: func.parameters,
+        name: func.name.clone(),
+        body: Arc::new(func.body),
+        declaration_env: env as *mut Environment,
+    };
+
+    //let decl_env: &mut Environment = unsafe { &mut *function_val.declaration_env };
+
+    env.declare_var(func.name, Box::from(function))
+}
 
 
 pub fn mk_number<T: Into<f64>>(number: T) -> Box<NumberVal> {
@@ -1094,8 +1205,8 @@ pub fn mk_bool(b: bool) -> Box<BooleanVal> {
 }
 
 pub fn mk_native_fn(call: FunctionCall) -> Box<NativeFnValue> {
-    Box::from(NativeFnValue{ 
-        value_type: NativeFn, 
-        call 
+    Box::from(NativeFnValue{
+        value_type: NativeFn,
+        call
     })
 }
