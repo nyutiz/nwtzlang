@@ -13,7 +13,7 @@ use crate::nwtz::{evaluate, mk_bool, mk_native_fn, mk_null, mk_number, tokenize,
 mod nwtz;
 
 fn main() {
-    let mut env = Environment::new(None); // Create the environment once
+    let mut env = Environment::new(None);
 
     // Optionally, declare built-in variables here:
     //env.declare_var("x".to_string(), mk_number(100));
@@ -26,10 +26,10 @@ fn main() {
     env.declare_var("false".to_string(), mk_bool(false));
 
     env.declare_var(
-        "print".to_string(),
+        "log".to_string(),
         mk_native_fn(Arc::new(|args, _env| {
             for arg in args { println!("{:#?}", arg); }
-            mk_number(0)
+            mk_null()
         })),
     );
 
@@ -55,6 +55,9 @@ fn main() {
             let tokens = tokenize(file.clone());
             let mut parser = Parser::new(tokens);
             let ast = parser.produce_ast();
+            
+            //println!("{:#?}", ast);
+            
             let result = evaluate(Box::new(ast), &mut env);
         }
 

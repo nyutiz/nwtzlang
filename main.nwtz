@@ -11,20 +11,20 @@ obj Human{
 
 fn main(String[] args){
 
-    set humans = Human[];
+    humans = Human[];
 
-    set server = new socket::server("localhost", 1234);
+    server = new socket::server("localhost", 1234);
 
     server.start();
 
-    set human = new Human("Jerome", "Dupont", 75);
+    human = new Human("Jerome", "Dupont", 75);
 
     humans.add(human);
 
-    set my_car = new Car("Tesla", "S", false);
+    my_car = new Car("Tesla", "S", false);
 
     my_car.power();
-    set mark_name = my_car.get_mark();
+    mark_name = my_car.get_mark();
 
     log(mark_name);
 

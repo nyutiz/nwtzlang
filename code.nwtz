@@ -1,7 +1,11 @@
 
-fn add (x,y) {
-    result = x + y;
-    result
+obj truc {
+    name: "Het",
+};
+
+func code(){
+    log(truc);
 }
 
-print(add(5, 8));
+
+code();
