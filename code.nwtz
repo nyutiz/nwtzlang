@@ -1,11 +1,18 @@
 
 obj truc {
-    name: "Het",
+    name: "How are you today",
 };
 
-func code(){
-    log(truc);
+func fuckYourself(a){
+    func yes(c,b){
+        log(c+b + a)
+    }
+    yes
 }
 
+truc.name = 6;
 
-code();
+log(truc.name);
+
+truc = fuckYourself(5);
+log(truc(1,6))

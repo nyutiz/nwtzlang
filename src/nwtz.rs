@@ -209,6 +209,12 @@ pub enum NodeType {
 }
 
 #[derive(Debug, Clone)]
+pub struct Parameter {
+    pub param_type: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct Environment {
     parent: Option<Box<Environment>>,
     variables: HashMap<String, Box<dyn RuntimeVal>>,
@@ -242,13 +248,13 @@ pub struct BooleanVal {
 pub struct StringLiteralExpr {
     r#type: ValueType,
     kind: NodeType,
-    value: String,
+    pub(crate) value: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct ObjectVal {
     pub r#type: ValueType,
-    pub properties: HashMap<String, Box<dyn RuntimeVal>>,
+    pub properties:  Rc<RefCell<HashMap<String, Box<dyn RuntimeVal>>>>,
 }
 
 #[derive(Debug)]
@@ -724,7 +730,6 @@ impl Parser {
 
         self.eat();
 
-        // parse function name
         let name = if let Token::Identifier(name) = self.eat() {
             name
         } else {
@@ -757,68 +762,50 @@ impl Parser {
     }
 
     fn parse_obj_declaration(&mut self) -> Box<dyn Stmt> {
-
         self.eat();
         let name = if let Token::Identifier(name) = self.eat() {
             name
         } else {
-            panic!("Expected function name following obj keyword");
+            panic!("Expected identifier after 'obj'");
         };
 
-        self.eat();
+        self.expect(Token::LBrace, "Expected '{' after object name");
 
         let mut properties: Vec<Property> = Vec::new();
-        
-        while self.not_eof() && *self.at() != RBrace{
-            let key = if let Token::Identifier(name) = self.eat() {
-                name
+
+        while self.not_eof() && *self.at() != Token::RBrace {
+            let key = if let Token::Identifier(key) = self.eat() {
+                key
             } else {
-                panic!("Parser Error: Object literal key expected, got {:?}", self.at());
+                panic!("Expected property key in object literal");
             };
 
-            if *self.at() == Token::Comma{
-                self.eat();
-                properties.push(Property {
-                    kind: NodeType::Property,
-                    key,
-                    value: None,
-                });
-                continue
-            }
-            else if *self.at() == RBrace{
-                properties.push(Property {
-                    kind: NodeType::Property,
-                    key,
-                    value: None,
-                });
-                continue
-            }
-
-            self.expect(Token::Colon, "Missing colon following identifier in ObjectExpr");
-
+            self.expect(Token::Colon, "Expected ':' after property key");
             let value = self.parse_expr();
 
-            properties.push(Property{
+            properties.push(Property {
                 kind: NodeType::Property,
                 key,
-                value: Option::from(value),
+                value: Some(value),
             });
 
-            if *self.at() != RBrace{
-                self.expect(Token::Comma, "Expected comma or Closing Bracket following Property");
+            if *self.at() == Token::Comma {
+                self.eat();
             }
-
         }
 
-        self.expect(RBrace, "Object literal missing closing brace");
-        
-        Box::from(ObjectLiteral{
+        self.expect(Token::RBrace, "Expected '}' to close object literal");
+        self.expect(Token::Semicolon, "Expected ';' after object declaration");
+
+        let obj_literal = Box::from(ObjectLiteral {
             kind: NodeType::ObjectLiteral,
             properties,
-        })
-        
+        });
+
+        Box::from(VariableDeclaration::new(name, Some(obj_literal)))
     }
-    
+
+
     fn parse_variable_declaration(&mut self) -> Box<dyn Stmt> {
         let identifier = match self.eat() {
             Token::Identifier(name) => name,
@@ -1177,20 +1164,46 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
     }
 }
 
-pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal> {
+pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let assignment = node
         .downcast::<AssignmentExpr>()
-        .expect("Expected a VariableDeclaration node");
+        .expect("Expected an AssignmentExpr node");
 
-    let var_name = if let Some(ident) = assignment.assigne.as_any().downcast_ref::<IdentifierExpr>() {
-        ident.name.clone()
+    let new_value = evaluate(assignment.value.expect("Assignment missing RHS"), env);
+
+    if let Some(ident) = assignment.assigne.as_any().downcast_ref::<IdentifierExpr>() {
+        return env.assign_var(ident.name.clone(), new_value);
+    }
+    else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
+        let object_val = evaluate(member.object.clone(), env);
+        if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
+            let prop_name = if member.computed {
+                let computed_val = evaluate(member.property.clone(), env);
+                if let Some(str_val) = computed_val.as_any().downcast_ref::<StringLiteralExpr>() {
+                    str_val.value.clone()
+                } else if let Some(ident) = computed_val.as_any().downcast_ref::<IdentifierExpr>() {
+                    ident.name.clone()
+                } else {
+                    panic!("La propriété calculée n'a pas évalué à une chaîne");
+                }
+            } else {
+                if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
+                    ident.name.clone()
+                } else {
+                    panic!("Member expression attendait un identifiant en propriété non computed");
+                }
+            };
+
+            obj.properties.borrow_mut().insert(prop_name, new_value.clone());
+            return new_value;
+        } else {
+            panic!("Assignment target is not an object");
+        }
     } else {
         panic!("Invalid LHS in assignment: {:?}", assignment.assigne);
-    };
-
-    let value = evaluate(assignment.value.expect("Assignment missing RHS"), env);
-    env.assign_var(var_name, value)
+    }
 }
+
 pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal> {
     let var_declaration = declaration
         .downcast::<VariableDeclaration>()
@@ -1227,7 +1240,7 @@ pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment, ) -> Box
         }
     };
 
-    match object.properties.get(&prop_name) {
+    match object.properties.borrow_mut().get(&prop_name) {
         Some(val) => val.clone(),
         None => panic!("La propriété '{}' n'existe pas dans l'objet", prop_name),
     }
@@ -1315,9 +1328,10 @@ pub fn eval_object_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
 
     Box::from(ObjectVal {
         r#type: ValueType::Object,
-        properties: props,
+        properties: Rc::new(RefCell::new(props)),
     })
 }
+
 pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let call = node
         .downcast::<CallExpr>()

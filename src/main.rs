@@ -8,7 +8,7 @@ use std::{fs, io};
 use std::io::Write;
 use std::sync::Arc;
 use std::time::SystemTime;
-use crate::nwtz::{evaluate, mk_bool, mk_native_fn, mk_null, mk_number, tokenize, Environment, FunctionCall, NumberVal, Parser, RuntimeVal, ValueType};
+use crate::nwtz::{evaluate, mk_bool, mk_native_fn, mk_null, mk_number, tokenize, BooleanVal, Environment, FunctionCall, NumberVal, Parser, RuntimeVal, StringLiteralExpr, ValueType};
 
 mod nwtz;
 
@@ -28,10 +28,24 @@ fn main() {
     env.declare_var(
         "log".to_string(),
         mk_native_fn(Arc::new(|args, _env| {
-            for arg in args { println!("{:#?}", arg); }
+            for arg in args {
+                if let Some(string_val) = arg.as_any().downcast_ref::<StringLiteralExpr>() {
+                    println!("{}", string_val.value);
+                }
+                else if let Some(number_val) = arg.as_any().downcast_ref::<NumberVal>() {
+                    println!("{}", number_val.value);
+                }
+                else if let Some(bool_val) = arg.as_any().downcast_ref::<BooleanVal>() {
+                    println!("{}", bool_val.value);
+                }
+                else {
+                    println!("{:#?}", arg);
+                }
+            }
             mk_null()
         })),
     );
+
 
     env.declare_var(
         "time".to_string(),
@@ -49,7 +63,7 @@ fn main() {
         io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
 
-        if input.is_empty() || input.contains("exit") {
+        if input.is_empty() {
 
             let file = fs::read_to_string("code.nwtz").unwrap();
             let tokens = tokenize(file.clone());
@@ -60,6 +74,7 @@ fn main() {
             
             let result = evaluate(Box::new(ast), &mut env);
         }
+
 
         let tokens = tokenize(input.to_string());
         let mut parser = Parser::new(tokens);
