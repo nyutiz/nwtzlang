@@ -13,4 +13,6 @@ Written in Rust, this new interpreted language aims to provide **seamless import
 
 - Array/List structures similar to Lua
 
+
+I haven't updated the snd grammar with the current changes but it's still a basis for this project
  
