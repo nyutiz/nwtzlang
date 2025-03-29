@@ -16,3 +16,4 @@ log(truc.name);
 
 truc = fuckYourself(5);
 log(truc(1,6))
+<

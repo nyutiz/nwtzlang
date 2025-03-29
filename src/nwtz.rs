@@ -102,7 +102,7 @@ pub enum Token {
     Impl,
     #[token("if")]
     If,
-    #[token("els")]
+    #[token("else")]
     Else,
     #[token("new")]
     New,
