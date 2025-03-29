@@ -15,4 +15,6 @@ Written in Rust, this new interpreted language aims to provide **seamless import
 
 
 I haven't updated the snd grammar with the current changes but it's still a basis for this project
- 
+
+I want this language to be able to help projects, especially by its simplicity and I would like to implement algorithms that would speed up calculations and manipulate data easily while being portable, secure and multiplatform and in the future make a WORA like java. 
+@gabgh_
