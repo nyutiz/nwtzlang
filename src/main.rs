@@ -91,5 +91,7 @@ fn main() {
 
 }
 
+Modify eval object expr to handle tables
+and to reassign value by index
 
 //User Defined Functions & Closures - Programming Language From Scratch  27:16
