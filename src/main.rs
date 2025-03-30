@@ -8,7 +8,7 @@ use std::{fs, io};
 use std::io::Write;
 use std::sync::Arc;
 use std::time::SystemTime;
-use crate::nwtz::{evaluate, mk_bool, mk_native_fn, mk_null, mk_number, tokenize, BooleanVal, Environment, FunctionCall, NumberVal, Parser, RuntimeVal, StringLiteralExpr, ValueType};
+use crate::nwtz::{evaluate, mk_bool, mk_native_fn, mk_null, mk_number, tokenize, BooleanVal, Environment, FunctionCall, NullVal, NumberVal, Parser, RuntimeVal, StringLiteralExpr, ValueType};
 
 mod nwtz;
 
@@ -37,6 +37,9 @@ fn main() {
                 }
                 else if let Some(bool_val) = arg.as_any().downcast_ref::<BooleanVal>() {
                     println!("{}", bool_val.value);
+                }
+                else if let Some(bool_val) = arg.as_any().downcast_ref::<NullVal>() {
+                    println!("null");
                 }
                 else {
                     println!("{:#?}", arg);
@@ -69,7 +72,9 @@ fn main() {
             let tokens = tokenize(file.clone());
             let mut parser = Parser::new(tokens);
             let ast = parser.produce_ast();
-            
+            println!("{:#?}", ast);
+
+
             //println!("{:#?}", ast);
             
             let result = evaluate(Box::new(ast), &mut env);

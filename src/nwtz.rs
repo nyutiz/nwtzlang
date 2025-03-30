@@ -6,7 +6,7 @@
 use std::any::Any;
 use std::cell::RefCell;
 use std::cmp::PartialEq;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
 use std::io;
 use std::process::exit;
@@ -16,6 +16,8 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 use crate::nwtz::ValueType::{Boolean, NativeFn, Null, Number};
 use std::sync::Arc;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 use crate::nwtz::NodeType::Identifier;
 use crate::nwtz::Token::{LBrace, RBrace, RBracket};
 
@@ -111,7 +113,7 @@ pub enum Token {
     #[token("or")]
     Or,
     #[token("whl")]
-    Whl,
+    While,
     #[token("in")]
     In,
     #[token("for")]
@@ -173,12 +175,13 @@ pub enum Token {
     EOF,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumIter)]
 pub enum ValueType {
     Null,
     Number,
     Boolean,
     Object,
+    Array,
     NativeFn,
     Function,
     String,
@@ -205,8 +208,12 @@ pub enum NodeType {
     Identifier,
     BinaryExpression,
     StringLiteral,
-
+    ArrayLiteral,
 }
+
+static RESERVED_NAMES: Lazy<HashSet<String>> = Lazy::new(|| {
+    ValueType::iter().map(|vt| format!("{:?}", vt)).collect()
+});
 
 #[derive(Debug, Clone)]
 pub struct Parameter {
@@ -225,7 +232,11 @@ pub struct NullVal {
     pub r#type: ValueType,
     pub value: String,
 }
-
+#[derive(Debug, Clone)]
+pub struct ArrayVal {
+    pub r#type: ValueType,
+    pub elements: Vec<Box<dyn RuntimeVal>>,
+}
 #[derive(Debug, Clone)]
 pub struct BooleanLiteral {
     kind: NodeType,
@@ -249,6 +260,12 @@ pub struct StringLiteralExpr {
     r#type: ValueType,
     kind: NodeType,
     pub(crate) value: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayLiteral {
+    pub kind: NodeType,
+    pub elements: Vec<Box<dyn Stmt>>,
 }
 
 #[derive(Debug, Clone)]
@@ -317,7 +334,6 @@ pub struct MemberExpr {
     kind: NodeType,
     object: Box<dyn Stmt>,
     property: Box<dyn Stmt>,
-    computed: bool,
 }
 
 #[derive(Debug)]
@@ -378,9 +394,9 @@ impl Environment {
     
     pub fn declare_var(&mut self, var_name: String, value: Box<dyn RuntimeVal>) -> Box<dyn RuntimeVal> {
         
-        if self.variables.contains_key(&var_name) {
-            //panic!("Cannot declare variable {}. It is already defined.", var_name);
-        }
+        //if self.variables.contains_key(&var_name) {
+        //    panic!("Cannot declare variable {}. It is already defined.", var_name);
+        //}
         self.variables.insert(var_name.clone(), value.clone());
         value
     }
@@ -394,7 +410,7 @@ impl Environment {
         let env = self.resolve(&var_name);
         env.variables.get(&var_name).unwrap().clone()
     }
-    pub fn resolve(&mut self, var_name: &str) -> &mut Environment {
+    pub fn resolve(&mut self, var_name: &str) -> &mut Environment {        
         if self.variables.contains_key(var_name) {
             self
         } else if let Some(ref mut parent_env) = self.parent {
@@ -449,6 +465,15 @@ impl RuntimeVal for StringLiteralExpr {
         self
     }
 }
+impl RuntimeVal for ArrayVal {
+    fn value_type(&self) -> ValueType {
+        self.r#type.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 impl RuntimeVal for NativeFnValue {
     fn value_type(&self) -> ValueType {
@@ -488,6 +513,12 @@ impl RuntimeVal for ObjectVal {
 impl Stmt for BooleanLiteral {
     fn kind(&self) -> NodeType { self.kind.clone() }
     fn value(&self) -> Option<String> { Some(self.value.to_string()) }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+impl Stmt for ArrayLiteral {
+    fn kind(&self) -> NodeType { self.kind.clone() }
+    fn value(&self) -> Option<String> {None}
     fn as_any(&self) -> &dyn Any { self }
 }
 impl Stmt for FunctionDeclaration {
@@ -716,7 +747,10 @@ impl Parser {
                 self.parse_variable_declaration()
             }
             Token::Func => {
-                self.parse_fn_declaration()
+                self.parse_func_declaration()
+            }
+            Token::With => {
+                self.parse_with_declaration()
             }
             Token::Obj => {
                 self.parse_obj_declaration()
@@ -725,8 +759,29 @@ impl Parser {
         }
     }
 
+    fn parse_with_declaration(&mut self) -> Box<dyn Stmt> {
+        
+        // Tokenize + Produce AST + add to current ast
+        
+        self.eat();
 
-    fn parse_fn_declaration(&mut self) -> Box<dyn Stmt> {
+        let name = if let Token::Identifier(name) = self.eat() {
+            name
+        } else {
+            panic!("Expected import name following with keyword");
+        };
+
+        self.expect(RBrace, "';' after import");
+
+
+        Box::from(FunctionDeclaration{
+            kind: NodeType::FunctionDeclaration,
+            parameters: Default::default(),
+            name,
+            body: Default::default(),
+        })
+    }
+    fn parse_func_declaration(&mut self) -> Box<dyn Stmt> {
 
         self.eat();
 
@@ -794,7 +849,7 @@ impl Parser {
             }
         }
 
-        self.expect(Token::RBrace, "Expected '}' to close object literal");
+        self.expect(RBrace, "Expected '}' to close object literal");
         self.expect(Token::Semicolon, "Expected ';' after object declaration");
 
         let obj_literal = Box::from(ObjectLiteral {
@@ -849,8 +904,11 @@ impl Parser {
 
         self.eat();
         let mut properties: Vec<Property> = Vec::new();
-        while self.not_eof() && *self.at() != Token::RBrace{
+        while self.not_eof() && *self.at() != RBrace{
             let key = if let Token::Identifier(name) = self.eat() {
+                if name == "String"{
+                    
+                }
                 name
             } else {
                 panic!("Parser Error: Object literal key expected, got {:?}", self.at());
@@ -1001,6 +1059,30 @@ impl Parser {
 
         args
     }
+    
+    fn parse_array_expr(&mut self) -> Box<dyn Stmt> {
+        //self.expect(Token::LBracket, "Expected '[' to start array literal");
+        
+        
+        let mut elements: Vec<Box<dyn Stmt>> = Vec::new();
+
+        if *self.at() != Token::RBracket {
+            // On parse le premier élément
+            elements.push(self.parse_expr());
+            // Et les suivants séparés par des virgules
+            while *self.at() == Token::Comma {
+                self.eat();
+                elements.push(self.parse_expr());
+            }
+        }
+        self.expect(Token::RBracket, "Expected ']' to close array literal");
+
+        Box::from(ArrayLiteral {
+            kind: NodeType::ArrayLiteral,
+            elements,
+        })
+        
+    }
 
     fn parse_member_expr(&mut self) -> Box<dyn Stmt>{
 
@@ -1009,17 +1091,14 @@ impl Parser {
         while *self.at() == Token::Dot || *self.at() == Token::LBracket {
             let operator = self.eat();
             let property: Box<dyn Stmt>;
-            let computed;
 
             if operator == Token::Dot {
-                computed = false;
                 property = self.parse_primary_expr();
 
                 if property.kind() != NodeType::Identifier {
                     panic!("Cannot use dot operator without right hand side being a identifier {:?}", self.at());
                 }
             } else {
-                computed = true;
                 property = self.parse_expr();
                 self.expect(Token::RBracket, "Missing closing bracket in computed value");
             }
@@ -1028,7 +1107,6 @@ impl Parser {
                 kind: NodeType::MemberExpr,
                 object,
                 property,
-                computed,
             });
         }
 
@@ -1076,6 +1154,7 @@ impl Parser {
                 kind: NodeType::BooleanLiteral,
                 value: true,
             }),
+            Token::LBracket => self.parse_array_expr(),
             token => Box::from(IdentifierExpr {
                 kind: NodeType::Identifier,
                 name: "null".to_string(),
@@ -1161,9 +1240,27 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
             eval_member_expr(ast_node, env)
         },
         NodeType::Property => panic!("This ast node has not yet been setup for interpretation {:#?}", ast_node),
+        NodeType::ArrayLiteral => {
+            eval_array_expr(ast_node, env)
+        },
     }
 }
 
+pub fn eval_array_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    let array_node = node.downcast::<ArrayLiteral>()
+        .expect("Expected an ArrayLiteral node");
+
+    let elements: Vec<Box<dyn RuntimeVal>> = array_node
+        .elements
+        .into_iter()
+        .map(|expr| evaluate(expr, env))
+        .collect();
+
+    Box::from(ArrayVal {
+        r#type: ValueType::Array,
+        elements,
+    })
+}
 pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let assignment = node
         .downcast::<AssignmentExpr>()
@@ -1173,27 +1270,14 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
 
     if let Some(ident) = assignment.assigne.as_any().downcast_ref::<IdentifierExpr>() {
         return env.assign_var(ident.name.clone(), new_value);
-    }
-    else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
+    } else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
         let object_val = evaluate(member.object.clone(), env);
         if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
-            let prop_name = if member.computed {
-                let computed_val = evaluate(member.property.clone(), env);
-                if let Some(str_val) = computed_val.as_any().downcast_ref::<StringLiteralExpr>() {
-                    str_val.value.clone()
-                } else if let Some(ident) = computed_val.as_any().downcast_ref::<IdentifierExpr>() {
-                    ident.name.clone()
-                } else {
-                    panic!("La propriété calculée n'a pas évalué à une chaîne");
-                }
+            let prop_name = if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
+                ident.name.clone()
             } else {
-                if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
-                    ident.name.clone()
-                } else {
-                    panic!("Member expression attendait un identifiant en propriété non computed");
-                }
+                panic!("Member expression expected an identifier for non-computed property");
             };
-
             obj.properties.borrow_mut().insert(prop_name, new_value.clone());
             return new_value;
         } else {
@@ -1215,36 +1299,40 @@ pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, )
     env.declare_var(var_declaration.identifier, value.clone())
 }
 
-pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal> {
+pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let member = ast_node.downcast::<MemberExpr>()
         .expect("Expected a MemberExpr node");
 
     let object_val = evaluate(member.object, env);
-    let object = object_val.as_any().downcast_ref::<ObjectVal>()
-        .expect("Member access on non-object value");
 
-    let prop_name = if member.computed {
-        let computed_val = evaluate(member.property, env);
-        if let Some(str_val) = computed_val.as_any().downcast_ref::<StringLiteralExpr>() {
-            str_val.value.clone()
-        } else if let Some(ident) = computed_val.as_any().downcast_ref::<IdentifierExpr>() {
+    if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
+        let prop_name = if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
             ident.name.clone()
         } else {
-            panic!("La propriété calculée n'a pas évalué à une chaîne");
+            panic!("Member expression expected an identifier for a non-computed property");
+        };
+
+        match obj.properties.borrow_mut().get(&prop_name) {
+            Some(val) => val.clone(),
+            None => panic!("The property '{}' does not exist in the object", prop_name),
+        }
+    } else if let Some(arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
+        let index_val = evaluate(member.property, env);
+        if let Some(num) = index_val.as_any().downcast_ref::<NumberVal>() {
+            let index = num.value as usize;
+            if index < arr.elements.len() {
+                arr.elements[index].clone()
+            } else {
+                panic!("Index out of bounds: {} is greater than the array size {}", index, arr.elements.len());
+            }
+        } else {
+            panic!("The index of an array must be a number");
         }
     } else {
-        if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
-            ident.name.clone()
-        } else {
-            panic!("Member expression attendait un identifiant en propriété non computed");
-        }
-    };
-
-    match object.properties.borrow_mut().get(&prop_name) {
-        Some(val) => val.clone(),
-        None => panic!("La propriété '{}' n'existe pas dans l'objet", prop_name),
+        panic!("Member access on a type that is neither an object nor an array");
     }
 }
+
 pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let binary_expr = ast_node.downcast::<BinaryExpr>()
         .expect("Expected a BinaryExpr node");
@@ -1304,11 +1392,15 @@ pub fn eval_program(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
 
 pub fn eval_identifier(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let identifier_expr = ast_node.downcast::<IdentifierExpr>()
-        .expect("Expected a IdentifierExpr node");
-    let val = env.lookup_var(identifier_expr.name);
-    
-    val
+        .expect("Expected an IdentifierExpr node");
+
+    if RESERVED_NAMES.contains(&identifier_expr.name) {
+        return mk_null();
+    }
+
+    env.lookup_var(identifier_expr.name)
 }
+
 
 pub fn eval_object_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let obj = node
@@ -1416,5 +1508,12 @@ pub fn mk_native_fn(call: FunctionCall) -> Box<NativeFnValue> {
     Box::from(NativeFnValue{
         value_type: NativeFn,
         call
+    })
+}
+
+pub fn mk_array(elements: Vec<Box<dyn RuntimeVal>>) -> Box<ArrayVal> {
+    Box::from(ArrayVal {
+        r#type: ValueType::Array,
+        elements,
     })
 }

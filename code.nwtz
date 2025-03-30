@@ -1,19 +1,17 @@
+object = 6;
 
 obj truc {
     name: "How are you today",
+    age: String,
 };
 
-func fuckYourself(a){
-    func yes(c,b){
-        log(c+b + a)
-    }
-    yes
-}
+truc.age = object;
 
-truc.name = 6;
+log(truc.age);
 
-log(truc.name);
+monTableau = [42, "texte", true, null];
 
-truc = fuckYourself(5);
-log(truc(1,6))
-<
+log(monTableau[1]);
+
+monTableau[1] = "Hey";
+log(monTableau[1]);
