@@ -1,0 +1,9 @@
+Test = 5*5;
+
+fn say_caca(){
+    log("Caca");
+}
+
+if 5 = 5 {
+
+}

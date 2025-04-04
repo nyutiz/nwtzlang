@@ -72,9 +72,6 @@ fn main() {
             let tokens = tokenize(file.clone());
             let mut parser = Parser::new(tokens);
             let ast = parser.produce_ast();
-            println!("{:#?}", ast);
-
-
             //println!("{:#?}", ast);
             
             let result = evaluate(Box::new(ast), &mut env);
@@ -83,7 +80,7 @@ fn main() {
 
         let tokens = tokenize(input.to_string());
         let mut parser = Parser::new(tokens);
-        let program = parser.produce_ast();
+        let program = parser.produce_ast().merge_imports();
 
         let res = evaluate(Box::new(program), &mut env);
         //println!("{:#?}", res);
@@ -91,7 +88,7 @@ fn main() {
 
 }
 
-Modify eval object expr to handle tables
-and to reassign value by index
+//Modify eval object expr to handle tables
+//and to reassign value by index
 
 //User Defined Functions & Closures - Programming Language From Scratch  27:16

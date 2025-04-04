@@ -8,9 +8,10 @@ use std::cell::RefCell;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
-use std::io;
+use std::{fs, io};
 use std::process::exit;
 use std::rc::Rc;
+use std::slice::SliceIndex;
 use logos::Logos;
 use regex::Regex;
 use once_cell::sync::Lazy;
@@ -19,7 +20,7 @@ use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use crate::nwtz::NodeType::Identifier;
-use crate::nwtz::Token::{LBrace, RBrace, RBracket};
+use crate::nwtz::Token::{LBrace, RBrace, RBracket, Semicolon};
 
 pub trait Stmt: Debug + StmtClone {
     fn kind(&self) -> NodeType;
@@ -98,8 +99,8 @@ pub enum Token {
     With,
     #[token("obj")]
     Obj,
-    #[token("func")]
-    Func,
+    #[token("fn")]
+    Fn,
     #[token("impl")]
     Impl,
     #[token("if")]
@@ -194,8 +195,10 @@ pub enum NodeType {
     Program,
     VariableDeclaration,
     FunctionDeclaration,
+    ImportAst,
+    IfStatement,
 
-    // Expressions
+// Expressions
     AssignmentExpr,
     MemberExpr,
     CallExpr,
@@ -209,6 +212,7 @@ pub enum NodeType {
     BinaryExpression,
     StringLiteral,
     ArrayLiteral,
+
 }
 
 static RESERVED_NAMES: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -228,15 +232,23 @@ pub struct Environment {
 }
 
 #[derive(Debug, Clone)]
+pub struct ImportAst {
+    pub kind: NodeType,
+    pub body: Vec<Box<dyn Stmt>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct NullVal {
     pub r#type: ValueType,
     pub value: String,
 }
+
 #[derive(Debug, Clone)]
 pub struct ArrayVal {
     pub r#type: ValueType,
-    pub elements: Vec<Box<dyn RuntimeVal>>,
+    pub elements: Rc<RefCell<Vec<Box<dyn RuntimeVal>>>>,
 }
+
 #[derive(Debug, Clone)]
 pub struct BooleanLiteral {
     kind: NodeType,
@@ -262,6 +274,13 @@ pub struct StringLiteralExpr {
     pub(crate) value: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct IfStatement {
+    pub kind: NodeType,
+    pub condition: Box<dyn Stmt>,
+    pub then_branch: Vec<Box<dyn Stmt>>,
+    pub else_branch: Option<Vec<Box<dyn Stmt>>>,
+}
 #[derive(Debug, Clone)]
 pub struct ArrayLiteral {
     pub kind: NodeType,
@@ -427,6 +446,20 @@ impl Program {
             body: Vec::new(),
         }
     }
+    pub fn merge_imports(mut self) -> Self {
+        let mut merged_body = Vec::new();
+
+        for stmt in self.body.into_iter() {
+            if let Some(import_node) = stmt.as_any().downcast_ref::<ImportAst>() {
+                merged_body.extend(import_node.body.clone());
+            } else {
+                merged_body.push(stmt);
+            }
+        }
+
+        self.body = merged_body;
+        self
+    }
 }
 impl VariableDeclaration {
     pub fn new(identifier: String, value: Option<Box<dyn Stmt>>) -> Self {
@@ -557,6 +590,20 @@ impl Stmt for ObjectLiteral {
     }
 
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Stmt for ImportAst {
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+
+    fn value(&self) -> Option<String> {
+        None
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
@@ -746,7 +793,7 @@ impl Parser {
             Token::Identifier(_) if *self.peek() == Token::Equal => {
                 self.parse_variable_declaration()
             }
-            Token::Func => {
+            Token::Fn => {
                 self.parse_func_declaration()
             }
             Token::With => {
@@ -755,14 +802,14 @@ impl Parser {
             Token::Obj => {
                 self.parse_obj_declaration()
             }
+            Token::If => {
+                self.parse_if_statement()
+            }
             _ => self.parse_expr(),
         }
     }
 
     fn parse_with_declaration(&mut self) -> Box<dyn Stmt> {
-        
-        // Tokenize + Produce AST + add to current ast
-        
         self.eat();
 
         let name = if let Token::Identifier(name) = self.eat() {
@@ -771,16 +818,87 @@ impl Parser {
             panic!("Expected import name following with keyword");
         };
 
-        self.expect(RBrace, "';' after import");
+        //println!("{:?}", name);
+
+        if name.starts_with("_") {
+            let mut new_name = name[1..].to_string();
+            new_name.push_str(".nwtz");
+            let import = fs::read_to_string(&new_name)
+                .expect("Erreur lors de la lecture du fichier");
+            //println!("{}", import);
+            let tokens = tokenize(import);
+            let mut external_parser = Parser::new(tokens);
+            let external_ast = external_parser.produce_ast();
+            self.expect(Semicolon, "';' after import");
+            return Box::from(ImportAst {
+                kind: NodeType::ImportAst,
+                body: external_ast.body,
+            });
+        } else {
+            unimplemented!("Chargement depuis une installation locale ou via le web");
+        }
 
 
-        Box::from(FunctionDeclaration{
-            kind: NodeType::FunctionDeclaration,
-            parameters: Default::default(),
-            name,
-            body: Default::default(),
-        })
     }
+
+    fn parse_if_statement(&mut self) -> Box<dyn Stmt> {
+        self.eat();
+
+        let left_token = self.eat();
+        let left_expr: Box<dyn Stmt> = match left_token {
+            Token::Identifier(name) => Box::from(IdentifierExpr {
+                kind: NodeType::Identifier,
+                name,
+            }),
+            Token::Integer(number) => Box::from(LiteralExpr {
+                kind: NodeType::NumericLiteral,
+                value: number as f64,
+            }),
+            other => {
+                self.expect(Token::Identifier(String::new()), "Variable or integer expected as left-hand side");
+                unreachable!();
+            }
+        };
+
+        let op_token = self.eat();
+        let operator: String = match op_token {
+            Token::Equal => "=".to_string(),
+            Token::Greater => ">".to_string(),
+            Token::Lower => "<".to_string(),
+            _ => {
+                self.expect(Token::Equal, "Expected an operator (=, >, or <)");
+                unreachable!();
+            }
+        };
+
+
+        let right_token = self.eat();
+        let right_expr: Box<dyn Stmt> = match right_token {
+            Token::Identifier(name) => Box::from(IdentifierExpr {
+                kind: NodeType::Identifier,
+                name,
+            }),
+            Token::Integer(number) => Box::from(LiteralExpr {
+                kind: NodeType::NumericLiteral,
+                value: number as f64,
+            }),
+            _ => {
+                self.expect(Token::Identifier(String::new()), "Variable or integer expected as right-hand side");
+                unreachable!();
+            }
+        };
+
+        let condition = Box::from(BinaryExpr {
+            kind: NodeType::BinaryExpression,
+            left: left_expr,
+            right: right_expr,
+            operator,
+        });
+        
+        condition
+
+    }
+
     fn parse_func_declaration(&mut self) -> Box<dyn Stmt> {
 
         self.eat();
@@ -1243,8 +1361,54 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
         NodeType::ArrayLiteral => {
             eval_array_expr(ast_node, env)
         },
+        NodeType::ImportAst => {
+            let import_ast = ast_node.as_any().downcast_ref::<ImportAst>()
+                .expect("Expected ImportAst node");
+            let mut last: Box<dyn RuntimeVal> = mk_null();
+            for stmt in import_ast.body.iter() {
+                last = evaluate(stmt.clone(), env);
+            }
+            last
+
+        },
+        NodeType::IfStatement => eval_if_statement(ast_node, env),
     }
 }
+
+pub fn eval_if_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    let if_stmt = ast_node.as_any().downcast_ref::<IfStatement>()
+        .expect("Expected an IfStatement node");
+
+    let cond_val = evaluate(if_stmt.condition.clone(), env);
+    let condition_is_true = if let Some(boolean) = cond_val.as_any().downcast_ref::<BooleanVal>() {
+        boolean.value
+    } else {
+        panic!("La condition du if n'est pas un booléen");
+    };
+
+    if condition_is_true {
+        let mut then_closure = || {
+            let mut last: Box<dyn RuntimeVal> = mk_null();
+            for stmt in if_stmt.then_branch.iter() {
+                last = evaluate(stmt.clone(), env);
+            }
+            last
+        };
+        then_closure()
+    } else if let Some(else_branch) = &if_stmt.else_branch {
+        let mut else_closure = || {
+            let mut last: Box<dyn RuntimeVal> = mk_null();
+            for stmt in else_branch.iter() {
+                last = evaluate(stmt.clone(), env);
+            }
+            last
+        };
+        else_closure()
+    } else {
+        mk_null()
+    }
+}
+
 
 pub fn eval_array_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let array_node = node.downcast::<ArrayLiteral>()
@@ -1258,20 +1422,27 @@ pub fn eval_array_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
 
     Box::from(ArrayVal {
         r#type: ValueType::Array,
-        elements,
+        elements: Rc::new(RefCell::new(elements)),
     })
 }
+
+
+
 pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let assignment = node
         .downcast::<AssignmentExpr>()
         .expect("Expected an AssignmentExpr node");
 
-    let new_value = evaluate(assignment.value.expect("Assignment missing RHS"), env);
+    let new_value = evaluate(
+        assignment.value.expect("Assignment missing RHS"),
+        env,
+    );
 
     if let Some(ident) = assignment.assigne.as_any().downcast_ref::<IdentifierExpr>() {
         return env.assign_var(ident.name.clone(), new_value);
     } else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
         let object_val = evaluate(member.object.clone(), env);
+        // Affectation sur un objet
         if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
             let prop_name = if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
                 ident.name.clone()
@@ -1280,13 +1451,35 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
             };
             obj.properties.borrow_mut().insert(prop_name, new_value.clone());
             return new_value;
-        } else {
-            panic!("Assignment target is not an object");
+        }
+        // Affectation sur un tableau
+        else if let Some(arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
+            let index_val = evaluate(member.property.clone(), env);
+            if let Some(num) = index_val.as_any().downcast_ref::<NumberVal>() {
+                let index = num.value as usize;
+                if index < arr.elements.borrow().len() {
+                    arr.elements.borrow_mut()[index] = new_value.clone();
+                    return new_value;
+                } else {
+                    panic!(
+                        "Index out of bounds: {} is greater than the array size {}",
+                        index,
+                        arr.elements.borrow().len()
+                    );
+                }
+            } else {
+                panic!("The index of an array must be a number");
+            }
+        }
+        else {
+            panic!("Assignment target is not an object or an array");
         }
     } else {
         panic!("Invalid LHS in assignment: {:?}", assignment.assigne);
     }
 }
+
+
 
 pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal> {
     let var_declaration = declaration
@@ -1320,10 +1513,10 @@ pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
         let index_val = evaluate(member.property, env);
         if let Some(num) = index_val.as_any().downcast_ref::<NumberVal>() {
             let index = num.value as usize;
-            if index < arr.elements.len() {
-                arr.elements[index].clone()
+            if index < arr.elements.borrow().len() {
+                arr.elements.borrow()[index].clone()
             } else {
-                panic!("Index out of bounds: {} is greater than the array size {}", index, arr.elements.len());
+                panic!("Index out of bounds: {} is greater than the array size {}", index, arr.elements.borrow().len());
             }
         } else {
             panic!("The index of an array must be a number");
@@ -1366,6 +1559,12 @@ pub fn eval_numeric_binary_expr(lhs: &NumberVal, rhs: &NumberVal, operator: &str
         "*" => lhs_value * rhs_value,
         "/" => lhs_value / rhs_value, // TODO: Division by zero checks
         "%" => lhs_value % rhs_value,
+        "=" => {
+            return Box::from(BooleanVal {
+                r#type: Boolean,
+                value: lhs_value == rhs_value,
+            });
+        },
         _ => panic!("Unknown binary operator: {}", operator),
     };
 
@@ -1514,6 +1713,6 @@ pub fn mk_native_fn(call: FunctionCall) -> Box<NativeFnValue> {
 pub fn mk_array(elements: Vec<Box<dyn RuntimeVal>>) -> Box<ArrayVal> {
     Box::from(ArrayVal {
         r#type: ValueType::Array,
-        elements,
+        elements: Rc::new(elements.into()),
     })
 }
