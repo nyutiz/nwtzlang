@@ -17,6 +17,7 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 use crate::nwtz::ValueType::{Boolean, NativeFn, Null, Number};
 use std::sync::Arc;
+use std::time::SystemTime;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use crate::nwtz::NodeType::Identifier;
@@ -268,7 +269,7 @@ pub struct BooleanVal {
 }
 
 #[derive(Debug, Clone)]
-pub struct StringLiteralExpr {
+pub struct StringVal {
     r#type: ValueType,
     kind: NodeType,
     pub(crate) value: String,
@@ -489,7 +490,7 @@ impl RuntimeVal for NumberVal {
     }
 }
 
-impl RuntimeVal for StringLiteralExpr {
+impl RuntimeVal for StringVal {
     fn value_type(&self) -> ValueType {
         self.r#type.clone()
     }
@@ -546,6 +547,12 @@ impl RuntimeVal for ObjectVal {
 impl Stmt for BooleanLiteral {
     fn kind(&self) -> NodeType { self.kind.clone() }
     fn value(&self) -> Option<String> { Some(self.value.to_string()) }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+impl Stmt for IfStatement {
+    fn kind(&self) -> NodeType { self.kind.clone() }
+    fn value(&self) -> Option<String> { None }
     fn as_any(&self) -> &dyn Any { self }
 }
 
@@ -608,7 +615,7 @@ impl Stmt for ImportAst {
     }
 }
 
-impl Stmt for StringLiteralExpr {
+impl Stmt for StringVal {
     fn kind(&self) -> NodeType {
         self.kind.clone()
     }
@@ -830,10 +837,10 @@ impl Parser {
             let mut external_parser = Parser::new(tokens);
             let external_ast = external_parser.produce_ast();
             self.expect(Semicolon, "';' after import");
-            return Box::from(ImportAst {
+            Box::from(ImportAst {
                 kind: NodeType::ImportAst,
                 body: external_ast.body,
-            });
+            })
         } else {
             unimplemented!("Chargement depuis une installation locale ou via le web");
         }
@@ -844,60 +851,63 @@ impl Parser {
     fn parse_if_statement(&mut self) -> Box<dyn Stmt> {
         self.eat();
 
-        let left_token = self.eat();
-        let left_expr: Box<dyn Stmt> = match left_token {
-            Token::Identifier(name) => Box::from(IdentifierExpr {
-                kind: NodeType::Identifier,
-                name,
-            }),
-            Token::Integer(number) => Box::from(LiteralExpr {
-                kind: NodeType::NumericLiteral,
-                value: number as f64,
-            }),
-            other => {
-                self.expect(Token::Identifier(String::new()), "Variable or integer expected as left-hand side");
-                unreachable!();
-            }
+        let left_expr: Box<dyn Stmt> = match self.eat() {
+            Token::Identifier(name) =>
+                Box::new(IdentifierExpr { kind: NodeType::Identifier, name }),
+            Token::Integer(n) =>
+                Box::new(LiteralExpr    { kind: NodeType::NumericLiteral, value: n as f64 }),
+            _ => panic!("Variable ou entier attendu après `if`"),
         };
 
-        let op_token = self.eat();
-        let operator: String = match op_token {
-            Token::Equal => "=".to_string(),
-            Token::Greater => ">".to_string(),
-            Token::Lower => "<".to_string(),
-            _ => {
-                self.expect(Token::Equal, "Expected an operator (=, >, or <)");
-                unreachable!();
-            }
+        let operator = match self.eat() {
+            Token::Equal   => "=",
+            Token::Greater => ">",
+            Token::Lower   => "<",
+            _ => panic!("Opérateur attendu (=, > ou <)"),
+        }.to_string();
+
+        let right_expr: Box<dyn Stmt> = match self.eat() {
+            Token::Identifier(name) =>
+                Box::new(IdentifierExpr { kind: NodeType::Identifier, name }),
+            Token::Integer(n) =>
+                Box::new(LiteralExpr    { kind: NodeType::NumericLiteral, value: n as f64 }),
+            _ => panic!("Variable ou entier attendu après l’opérateur"),
         };
 
-
-        let right_token = self.eat();
-        let right_expr: Box<dyn Stmt> = match right_token {
-            Token::Identifier(name) => Box::from(IdentifierExpr {
-                kind: NodeType::Identifier,
-                name,
-            }),
-            Token::Integer(number) => Box::from(LiteralExpr {
-                kind: NodeType::NumericLiteral,
-                value: number as f64,
-            }),
-            _ => {
-                self.expect(Token::Identifier(String::new()), "Variable or integer expected as right-hand side");
-                unreachable!();
-            }
-        };
-
-        let condition = Box::from(BinaryExpr {
+        let condition = Box::new(BinaryExpr {
             kind: NodeType::BinaryExpression,
-            left: left_expr,
+            left:  left_expr,
             right: right_expr,
             operator,
         });
-        
-        condition
 
+        self.expect(Token::LBrace, "‘{’ attendu après la condition du if");
+        let mut then_branch = Vec::new();
+        while self.not_eof() && *self.at() != Token::RBrace {
+            then_branch.push(self.parse_stmt());
+        }
+        self.expect(Token::RBrace, "‘}’ attendu pour clôturer le bloc then");
+
+        let else_branch = if self.eat_if(Token::Else) {
+            self.expect(Token::LBrace, "‘{’ attendu après else");
+            let mut else_vec = Vec::new();
+            while self.not_eof() && *self.at() != Token::RBrace {
+                else_vec.push(self.parse_stmt());
+            }
+            self.expect(Token::RBrace, "‘}’ attendu pour clôturer le bloc else");
+            Some(else_vec)
+        } else {
+            None
+        };
+
+        Box::new(IfStatement {
+            kind: NodeType::IfStatement,
+            condition,
+            then_branch,
+            else_branch,
+        })
     }
+
 
     fn parse_func_declaration(&mut self) -> Box<dyn Stmt> {
 
@@ -1249,7 +1259,7 @@ impl Parser {
             Token::StringLiteral(value) =>{
                 let unquoted = value[1..value.len()-1].to_string();
 
-                Box::from(StringLiteralExpr {
+                Box::from(StringVal {
                     r#type: ValueType::String,
                     kind: NodeType::StringLiteral,
                     value: unquoted,
@@ -1334,9 +1344,9 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
             eval_var_declaration(ast_node, env)
         },
         NodeType::StringLiteral => {
-            let str = ast_node.as_any().downcast_ref::<StringLiteralExpr>()
+            let str = ast_node.as_any().downcast_ref::<StringVal>()
                 .expect("Expected a LiteralExpr");
-            Box::from(StringLiteralExpr {
+            Box::from(StringVal {
                 r#type: ValueType::String,
                 kind: NodeType::StringLiteral,
                 value: str.value.clone(),
@@ -1442,7 +1452,6 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
         return env.assign_var(ident.name.clone(), new_value);
     } else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
         let object_val = evaluate(member.object.clone(), env);
-        // Affectation sur un objet
         if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
             let prop_name = if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
                 ident.name.clone()
@@ -1452,7 +1461,6 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
             obj.properties.borrow_mut().insert(prop_name, new_value.clone());
             return new_value;
         }
-        // Affectation sur un tableau
         else if let Some(arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
             let index_val = evaluate(member.property.clone(), env);
             if let Some(num) = index_val.as_any().downcast_ref::<NumberVal>() {
@@ -1553,26 +1561,29 @@ pub fn eval_numeric_binary_expr(lhs: &NumberVal, rhs: &NumberVal, operator: &str
     let lhs_value = lhs.value;
     let rhs_value = rhs.value;
 
-    let result = match operator {
-        "+" => lhs_value + rhs_value,
-        "-" => lhs_value - rhs_value,
-        "*" => lhs_value * rhs_value,
-        "/" => lhs_value / rhs_value, // TODO: Division by zero checks
-        "%" => lhs_value % rhs_value,
-        "=" => {
-            return Box::from(BooleanVal {
-                r#type: Boolean,
-                value: lhs_value == rhs_value,
-            });
+    match operator {
+        "+" => Box::from(NumberVal { r#type: Number, value: lhs_value + rhs_value }),
+        "-" => Box::from(NumberVal { r#type: Number, value: lhs_value - rhs_value }),
+        "*" => Box::from(NumberVal { r#type: Number, value: lhs_value * rhs_value }),
+        "/" => {
+            if rhs_value == 0.0 {
+                panic!("Division par zéro interdite");
+            }
+            Box::from(NumberVal { r#type: Number, value: lhs_value / rhs_value })
         },
-        _ => panic!("Unknown binary operator: {}", operator),
-    };
+        "%" => Box::from(NumberVal { r#type: Number, value: lhs_value % rhs_value }),
 
-    Box::from(NumberVal {
-        r#type: Number,
-        value: result,
-    })
+        ">"  => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value  > rhs_value }),
+        "<"  => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value  < rhs_value }),
+        ">=" => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value >= rhs_value }),
+        "<=" => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value <= rhs_value }),
+        "!=" => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value != rhs_value }),
+        "="  => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value == rhs_value }),
+
+        _ => panic!("Unknown binary operator: {}", operator),
+    }
 }
+
 pub fn eval_program(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
     let program = ast_node.downcast::<Program>()
         .expect("Expected a Program node");
@@ -1716,3 +1727,110 @@ pub fn mk_array(elements: Vec<Box<dyn RuntimeVal>>) -> Box<ArrayVal> {
         elements: Rc::new(elements.into()),
     })
 }
+
+pub fn native_fs_read(args: Vec<Box<dyn RuntimeVal>>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+    let path = args.into_iter().next()
+        .and_then(|v| v.as_any().downcast_ref::<StringVal>().map(|s| s.value.clone()))
+        .expect("_fs_read attend un string");
+    let content = std::fs::read_to_string(&path)
+        .expect("Erreur lecture fichier");
+    Box::new(StringVal {
+        r#type: ValueType::String,
+        kind: NodeType::StringLiteral,
+        value: content,
+    })
+}
+
+pub fn make_global_env() -> Environment {
+    let mut env = Environment::new(None);
+
+    env.declare_var("null".to_string(), mk_null());
+    env.declare_var("true".to_string(), mk_bool(true));
+    env.declare_var("false".to_string(), mk_bool(false));
+
+    env.declare_var(
+        "log".to_string(),
+        mk_native_fn(Arc::new(|args, _env| {
+            for arg in args {
+                if let Some(string_val) = arg.as_any().downcast_ref::<StringVal>() {
+                    println!("{}", string_val.value);
+                }
+                else if let Some(number_val) = arg.as_any().downcast_ref::<NumberVal>() {
+                    println!("{}", number_val.value);
+                }
+                else if let Some(bool_val) = arg.as_any().downcast_ref::<BooleanVal>() {
+                    println!("{}", bool_val.value);
+                }
+                else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
+                    let mut out = std::string::String::new();
+                    for element in array_val.elements.borrow().iter() {
+                        let s = if let Some(string_val) = element.as_any().downcast_ref::<StringVal>() {
+                            string_val.value.clone()
+                        } else if let Some(num_val) = element.as_any().downcast_ref::<NumberVal>() {
+                            num_val.value.to_string()
+                        } else if let Some(bool_val) = element.as_any().downcast_ref::<BooleanVal>() {
+                            bool_val.value.to_string()
+                        } else if let Some(array_val) = element.as_any().downcast_ref::<ArrayVal>() {
+                            //let mut joined = String::new();
+                            //for child in array_val.elements.borrow().iter() {
+                            //    if !joined.is_empty() { joined.push(','); }
+                            //    joined.push_str(&format_val(child));
+                            //}
+                            //format!("[{}]", joined)
+                            "ARRAY INSIDE ARRAY NOT IMPLEMENTED".to_string()
+                        } else if let Some(_) = element.as_any().downcast_ref::<NullVal>() {
+                            "null".to_string()
+                        } else {
+                            String::new()
+                        };
+
+                        if !out.is_empty() {
+                            out.push(',');
+                        }
+                        out.push_str(&s);
+                    }
+                    println!("{}", out);
+                }
+                else if let Some(null_val) = arg.as_any().downcast_ref::<NullVal>() {
+                    println!("null");
+                }
+                else {
+                    println!("{:#?}", arg);
+                }
+            }
+            mk_null()
+        })),
+    );
+
+    env.declare_var(
+        "time".to_string(),
+        mk_native_fn(Arc::new(|args: Vec<Box<dyn RuntimeVal>>, _scope: &mut Environment| {
+            mk_number(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as f64 / 1000.0)
+        })),
+    );
+    
+    let registry = native_registry();
+    for (name, func) in registry {
+        env.declare_var(
+            name.to_string(),
+            mk_native_fn(func.clone())
+        );
+    }
+    env
+}
+
+macro_rules! register_natives {
+    ( $($name:expr => $func:path),* $(,)? ) => {
+        fn native_registry() -> HashMap<&'static str, FunctionCall> {
+            let mut m = HashMap::new();
+            $(
+                m.insert($name, Arc::new($func) as FunctionCall);
+            )*
+            m
+        }
+    }
+}
+
+register_natives!(
+    "_fs_read" => native_fs_read,
+);

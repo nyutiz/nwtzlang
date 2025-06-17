@@ -1,5 +1,3 @@
-with _test;
-
 log(Test);
 
 object = 6;
@@ -22,4 +20,3 @@ log(monTableau[1]);
 
 monTableau[1] = test;
 log(monTableau[1]);
-log(monTableau);

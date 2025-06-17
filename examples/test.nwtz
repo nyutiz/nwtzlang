@@ -1,6 +1,7 @@
 Test = 5*5;
+
 fn say_caca(){
-    log("Caca");
+    log("Swag");
 }
 
 if Test < 24 {
@@ -10,3 +11,4 @@ if Test < 24 {
 }
 
 secret = _fs_read("test.nwtz");
+log(secret);
