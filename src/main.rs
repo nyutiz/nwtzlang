@@ -1,20 +1,67 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
-#![allow(unused_imports)]
-
-
 use std::{fs, io};
 use std::io::Write;
 use std::sync::Arc;
-use std::time::SystemTime;
-use crate::nwtz::{evaluate, make_global_env, mk_bool, mk_native_fn, mk_null, mk_number, tokenize, BooleanVal, Environment, FunctionCall, NullVal, NumberVal, Parser, RuntimeVal, StringVal, ValueType};
+use crate::nwtz::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, NullVal, NumberVal, Parser, StringVal};
 
 mod nwtz;
 
 fn main() {
     let mut env = make_global_env();
-    
+
+    env.declare_var(
+        "log".to_string(),
+        mk_native_fn(Arc::new(|args, _env| {
+            for arg in args {
+                if let Some(string_val) = arg.as_any().downcast_ref::<StringVal>() {
+                    println!("{}", string_val.value);
+                }
+                else if let Some(number_val) = arg.as_any().downcast_ref::<NumberVal>() {
+                    println!("{}", number_val.value);
+                }
+                else if let Some(bool_val) = arg.as_any().downcast_ref::<BooleanVal>() {
+                    println!("{}", bool_val.value);
+                }
+                else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
+                    let mut out = String::new();
+                    for element in array_val.elements.borrow().iter() {
+                        let s = if let Some(string_val) = element.as_any().downcast_ref::<StringVal>() {
+                            string_val.value.clone()
+                        } else if let Some(num_val) = element.as_any().downcast_ref::<NumberVal>() {
+                            num_val.value.to_string()
+                        } else if let Some(bool_val) = element.as_any().downcast_ref::<BooleanVal>() {
+                            bool_val.value.to_string()
+                        } else if let Some(_array_val) = element.as_any().downcast_ref::<ArrayVal>() {
+                            //let mut joined = String::new();
+                            //for child in array_val.elements.borrow().iter() {
+                            //    if !joined.is_empty() { joined.push(','); }
+                            //    joined.push_str(&format_val(child));
+                            //}
+                            //format!("[{}]", joined)
+                            "ARRAY INSIDE ARRAY NOT IMPLEMENTED".to_string()
+                        } else if let Some(_) = element.as_any().downcast_ref::<NullVal>() {
+                            "null".to_string()
+                        } else {
+                            String::new()
+                        };
+
+                        if !out.is_empty() {
+                            out.push(',');
+                        }
+                        out.push_str(&s);
+                    }
+                    println!("{}", out);
+                }
+                else if let Some(_null_val) = arg.as_any().downcast_ref::<NullVal>() {
+                    println!("null");
+                }
+                else {
+                    println!("{:#?}", arg);
+                }
+            }
+            mk_null()
+        })),
+    );
+
     loop {
 
         print!("> ");
@@ -32,7 +79,7 @@ fn main() {
             let ast = parser.produce_ast();
             //println!("{:#?}", ast);
             
-            let result = evaluate(Box::new(ast), &mut env);
+            let _result = evaluate(Box::new(ast), &mut env);
         }
 
 
@@ -40,7 +87,7 @@ fn main() {
         let mut parser = Parser::new(tokens);
         let program = parser.produce_ast().merge_imports();
 
-        let res = evaluate(Box::new(program), &mut env);
+        let _res = evaluate(Box::new(program), &mut env);
         //println!("{:#?}", res);
     }
 

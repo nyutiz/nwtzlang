@@ -1,19 +1,11 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
-#![allow(unused_imports)]
-
 use std::any::Any;
 use std::cell::RefCell;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
-use std::{fs, io};
-use std::process::exit;
+use std::{fs};
 use std::rc::Rc;
-use std::slice::SliceIndex;
 use logos::Logos;
-use regex::Regex;
 use once_cell::sync::Lazy;
 use crate::nwtz::ValueType::{Boolean, NativeFn, Null, Number};
 use std::sync::Arc;
@@ -21,7 +13,7 @@ use std::time::SystemTime;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use crate::nwtz::NodeType::Identifier;
-use crate::nwtz::Token::{LBrace, RBrace, RBracket, Semicolon};
+use crate::nwtz::Token::{LBrace, RBrace, Semicolon};
 
 pub trait Stmt: Debug + StmtClone {
     fn kind(&self) -> NodeType;
@@ -220,11 +212,6 @@ static RESERVED_NAMES: Lazy<HashSet<String>> = Lazy::new(|| {
     ValueType::iter().map(|vt| format!("{:?}", vt)).collect()
 });
 
-#[derive(Debug, Clone)]
-pub struct Parameter {
-    pub param_type: String,
-    pub name: String,
-}
 
 #[derive(Debug, Clone)]
 pub struct Environment {
@@ -241,7 +228,6 @@ pub struct ImportAst {
 #[derive(Debug, Clone)]
 pub struct NullVal {
     pub r#type: ValueType,
-    pub value: String,
 }
 
 #[derive(Debug, Clone)]
@@ -513,7 +499,7 @@ impl RuntimeVal for NativeFnValue {
     fn value_type(&self) -> ValueType {
         self.value_type.clone()
     }
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }
@@ -522,7 +508,7 @@ impl RuntimeVal for FunctionVal {
     fn value_type(&self) -> ValueType {
         self.value_type.clone()
     }
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }
@@ -610,7 +596,7 @@ impl Stmt for ImportAst {
         None
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }
@@ -792,7 +778,7 @@ impl Parser {
     fn parse_stmt(&mut self) -> Box<dyn Stmt> {
 
         match self.at() {
-            Token::Identifier(_) if *self.peek() == Token::Semicolon => {
+            Token::Identifier(_) if *self.peek() == Semicolon => {
                 let name = if let Token::Identifier(n) = self.eat() { n } else { unreachable!() };
                 self.eat();
                 Box::from(VariableDeclaration::new(name, None))
@@ -853,7 +839,7 @@ impl Parser {
 
         let left_expr: Box<dyn Stmt> = match self.eat() {
             Token::Identifier(name) =>
-                Box::new(IdentifierExpr { kind: NodeType::Identifier, name }),
+                Box::new(IdentifierExpr { kind: Identifier, name }),
             Token::Integer(n) =>
                 Box::new(LiteralExpr    { kind: NodeType::NumericLiteral, value: n as f64 }),
             _ => panic!("Variable ou entier attendu après `if`"),
@@ -868,7 +854,7 @@ impl Parser {
 
         let right_expr: Box<dyn Stmt> = match self.eat() {
             Token::Identifier(name) =>
-                Box::new(IdentifierExpr { kind: NodeType::Identifier, name }),
+                Box::new(IdentifierExpr { kind: Identifier, name }),
             Token::Integer(n) =>
                 Box::new(LiteralExpr    { kind: NodeType::NumericLiteral, value: n as f64 }),
             _ => panic!("Variable ou entier attendu après l’opérateur"),
@@ -881,20 +867,20 @@ impl Parser {
             operator,
         });
 
-        self.expect(Token::LBrace, "‘{’ attendu après la condition du if");
+        self.expect(LBrace, "‘{’ attendu après la condition du if");
         let mut then_branch = Vec::new();
-        while self.not_eof() && *self.at() != Token::RBrace {
+        while self.not_eof() && *self.at() != RBrace {
             then_branch.push(self.parse_stmt());
         }
-        self.expect(Token::RBrace, "‘}’ attendu pour clôturer le bloc then");
+        self.expect(RBrace, "‘}’ attendu pour clôturer le bloc then");
 
         let else_branch = if self.eat_if(Token::Else) {
-            self.expect(Token::LBrace, "‘{’ attendu après else");
+            self.expect(LBrace, "‘{’ attendu après else");
             let mut else_vec = Vec::new();
-            while self.not_eof() && *self.at() != Token::RBrace {
+            while self.not_eof() && *self.at() != RBrace {
                 else_vec.push(self.parse_stmt());
             }
-            self.expect(Token::RBrace, "‘}’ attendu pour clôturer le bloc else");
+            self.expect(RBrace, "‘}’ attendu pour clôturer le bloc else");
             Some(else_vec)
         } else {
             None
@@ -952,11 +938,11 @@ impl Parser {
             panic!("Expected identifier after 'obj'");
         };
 
-        self.expect(Token::LBrace, "Expected '{' after object name");
+        self.expect(LBrace, "Expected '{' after object name");
 
         let mut properties: Vec<Property> = Vec::new();
 
-        while self.not_eof() && *self.at() != Token::RBrace {
+        while self.not_eof() && *self.at() != RBrace {
             let key = if let Token::Identifier(key) = self.eat() {
                 key
             } else {
@@ -978,7 +964,7 @@ impl Parser {
         }
 
         self.expect(RBrace, "Expected '}' to close object literal");
-        self.expect(Token::Semicolon, "Expected ';' after object declaration");
+        self.expect(Semicolon, "Expected ';' after object declaration");
 
         let obj_literal = Box::from(ObjectLiteral {
             kind: NodeType::ObjectLiteral,
@@ -1001,7 +987,7 @@ impl Parser {
         } else {
             None
         };
-        self.expect(Token::Semicolon, "Expected semicolon after variable declaration");
+        self.expect(Semicolon, "Expected semicolon after variable declaration");
         Box::from(VariableDeclaration {
             kind: NodeType::VariableDeclaration,
             identifier,
@@ -1026,7 +1012,7 @@ impl Parser {
     }
 
     fn parse_object_expr(&mut self) -> Box<dyn Stmt> {
-        if *self.at() != Token::LBrace {
+        if *self.at() != LBrace {
             return self.parse_additive_expr()
         }
 
@@ -1051,7 +1037,7 @@ impl Parser {
                 });
                 continue
             }
-            else if *self.at() == Token::RBrace{
+            else if *self.at() == RBrace{
                 properties.push(Property {
                     kind: NodeType::Property,
                     key,
@@ -1189,7 +1175,7 @@ impl Parser {
     }
     
     fn parse_array_expr(&mut self) -> Box<dyn Stmt> {
-        //self.expect(Token::LBracket, "Expected '[' to start array literal");
+        //self.expect(Token::LBracket, "Expected '[' to start array literal"); ]
         
         
         let mut elements: Vec<Box<dyn Stmt>> = Vec::new();
@@ -1223,7 +1209,7 @@ impl Parser {
             if operator == Token::Dot {
                 property = self.parse_primary_expr();
 
-                if property.kind() != NodeType::Identifier {
+                if property.kind() != Identifier {
                     panic!("Cannot use dot operator without right hand side being a identifier {:?}", self.at());
                 }
             } else {
@@ -1283,8 +1269,8 @@ impl Parser {
                 value: true,
             }),
             Token::LBracket => self.parse_array_expr(),
-            token => Box::from(IdentifierExpr {
-                kind: NodeType::Identifier,
+            _token => Box::from(IdentifierExpr {
+                kind: Identifier,
                 name: "null".to_string(),
             }),
         }
@@ -1320,7 +1306,7 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
             let literal = ast_node.as_any().downcast_ref::<LiteralExpr>()
                 .expect("Expected a LiteralExpr");
             Box::from(NumberVal {
-                r#type: ValueType::Number,
+                r#type: Number,
                 value: literal.value,
             })
         },
@@ -1449,7 +1435,7 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
     );
 
     if let Some(ident) = assignment.assigne.as_any().downcast_ref::<IdentifierExpr>() {
-        return env.assign_var(ident.name.clone(), new_value);
+        env.assign_var(ident.name.clone(), new_value)
     } else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
         let object_val = evaluate(member.object.clone(), env);
         if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
@@ -1554,7 +1540,6 @@ pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
 
     Box::from(NullVal {
         r#type: Null,
-        value: "null".to_string(),
     })
 }
 pub fn eval_numeric_binary_expr(lhs: &NumberVal, rhs: &NumberVal, operator: &str, ) -> Box<dyn RuntimeVal> {
@@ -1573,12 +1558,12 @@ pub fn eval_numeric_binary_expr(lhs: &NumberVal, rhs: &NumberVal, operator: &str
         },
         "%" => Box::from(NumberVal { r#type: Number, value: lhs_value % rhs_value }),
 
-        ">"  => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value  > rhs_value }),
-        "<"  => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value  < rhs_value }),
-        ">=" => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value >= rhs_value }),
-        "<=" => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value <= rhs_value }),
-        "!=" => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value != rhs_value }),
-        "="  => return Box::from(BooleanVal { r#type: Boolean, value: lhs_value == rhs_value }),
+        ">"  => Box::from(BooleanVal { r#type: Boolean, value: lhs_value  > rhs_value }),
+        "<"  => Box::from(BooleanVal { r#type: Boolean, value: lhs_value  < rhs_value }),
+        ">=" => Box::from(BooleanVal { r#type: Boolean, value: lhs_value >= rhs_value }),
+        "<=" => Box::from(BooleanVal { r#type: Boolean, value: lhs_value <= rhs_value }),
+        "!=" => Box::from(BooleanVal { r#type: Boolean, value: lhs_value != rhs_value }),
+        "="  => Box::from(BooleanVal { r#type: Boolean, value: lhs_value == rhs_value }),
 
         _ => panic!("Unknown binary operator: {}", operator),
     }
@@ -1591,7 +1576,7 @@ pub fn eval_program(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
     let mut last_evaluated: Box<dyn RuntimeVal> = mk_null();
 
     for stmt in program.body.into_iter().filter(|s| {
-        !(matches!(s.kind(), NodeType::Identifier) && s.as_any().downcast_ref::<IdentifierExpr>().unwrap().name == "null")
+        !(matches!(s.kind(), Identifier) && s.as_any().downcast_ref::<IdentifierExpr>().unwrap().name == "null")
     }) {
         last_evaluated = evaluate(stmt, env);
     }
@@ -1692,7 +1677,7 @@ pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &mut Environment) -> 
         declaration_env: Rc::new(RefCell::new(env.clone())),
     };
 
-    //let decl_env: &mut Environment = unsafe { &mut *function_val.declaration_env };
+    //let decl_env : &mut Environment = unsafe {&mut *function_val.declaration_env} ;
 
     env.declare_var(func.name, Box::from(function))
 }
@@ -1707,11 +1692,11 @@ pub fn mk_number<T: Into<f64>>(number: T) -> Box<NumberVal> {
 
 
 pub fn mk_null() -> Box<NullVal> {
-    Box::from(NullVal{ r#type: ValueType::Null, value: "null".to_string() })
+    Box::from(NullVal{ r#type: Null})
 }
 
 pub fn mk_bool(b: bool) -> Box<BooleanVal> {
-    Box::from(BooleanVal{ r#type: ValueType::Boolean, value: b })
+    Box::from(BooleanVal{ r#type: Boolean, value: b })
 }
 
 pub fn mk_native_fn(call: FunctionCall) -> Box<NativeFnValue> {
@@ -1721,18 +1706,18 @@ pub fn mk_native_fn(call: FunctionCall) -> Box<NativeFnValue> {
     })
 }
 
-pub fn mk_array(elements: Vec<Box<dyn RuntimeVal>>) -> Box<ArrayVal> {
+pub fn _mk_array(elements: Vec<Box<dyn RuntimeVal>>) -> Box<ArrayVal> {
     Box::from(ArrayVal {
         r#type: ValueType::Array,
         elements: Rc::new(elements.into()),
     })
 }
 
-pub fn native_fs_read(args: Vec<Box<dyn RuntimeVal>>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+pub fn native_fs_read(args: Vec<Box<dyn RuntimeVal>>, _env: &mut Environment) -> Box<dyn RuntimeVal> {
     let path = args.into_iter().next()
         .and_then(|v| v.as_any().downcast_ref::<StringVal>().map(|s| s.value.clone()))
         .expect("_fs_read attend un string");
-    let content = std::fs::read_to_string(&path)
+    let content = fs::read_to_string(&path)
         .expect("Erreur lecture fichier");
     Box::new(StringVal {
         r#type: ValueType::String,
@@ -1748,63 +1733,11 @@ pub fn make_global_env() -> Environment {
     env.declare_var("true".to_string(), mk_bool(true));
     env.declare_var("false".to_string(), mk_bool(false));
 
-    env.declare_var(
-        "log".to_string(),
-        mk_native_fn(Arc::new(|args, _env| {
-            for arg in args {
-                if let Some(string_val) = arg.as_any().downcast_ref::<StringVal>() {
-                    println!("{}", string_val.value);
-                }
-                else if let Some(number_val) = arg.as_any().downcast_ref::<NumberVal>() {
-                    println!("{}", number_val.value);
-                }
-                else if let Some(bool_val) = arg.as_any().downcast_ref::<BooleanVal>() {
-                    println!("{}", bool_val.value);
-                }
-                else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
-                    let mut out = std::string::String::new();
-                    for element in array_val.elements.borrow().iter() {
-                        let s = if let Some(string_val) = element.as_any().downcast_ref::<StringVal>() {
-                            string_val.value.clone()
-                        } else if let Some(num_val) = element.as_any().downcast_ref::<NumberVal>() {
-                            num_val.value.to_string()
-                        } else if let Some(bool_val) = element.as_any().downcast_ref::<BooleanVal>() {
-                            bool_val.value.to_string()
-                        } else if let Some(array_val) = element.as_any().downcast_ref::<ArrayVal>() {
-                            //let mut joined = String::new();
-                            //for child in array_val.elements.borrow().iter() {
-                            //    if !joined.is_empty() { joined.push(','); }
-                            //    joined.push_str(&format_val(child));
-                            //}
-                            //format!("[{}]", joined)
-                            "ARRAY INSIDE ARRAY NOT IMPLEMENTED".to_string()
-                        } else if let Some(_) = element.as_any().downcast_ref::<NullVal>() {
-                            "null".to_string()
-                        } else {
-                            String::new()
-                        };
 
-                        if !out.is_empty() {
-                            out.push(',');
-                        }
-                        out.push_str(&s);
-                    }
-                    println!("{}", out);
-                }
-                else if let Some(null_val) = arg.as_any().downcast_ref::<NullVal>() {
-                    println!("null");
-                }
-                else {
-                    println!("{:#?}", arg);
-                }
-            }
-            mk_null()
-        })),
-    );
 
     env.declare_var(
         "time".to_string(),
-        mk_native_fn(Arc::new(|args: Vec<Box<dyn RuntimeVal>>, _scope: &mut Environment| {
+        mk_native_fn(Arc::new(|_args: Vec<Box<dyn RuntimeVal>>, _scope: &mut Environment| {
             mk_number(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as f64 / 1000.0)
         })),
     );

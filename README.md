@@ -2,6 +2,7 @@
 
 Written in Rust, this new interpreted language aims to provide **seamless importation from other programming languages such as Python, Java, or C libraries, making it a multi-purpose utility language. For machine learning, commutation etc.**
 
+(Honestly I publish it just to use it in another project which is (for now) private)
 
 ## Goals & Planned Features
 
