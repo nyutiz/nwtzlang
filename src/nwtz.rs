@@ -258,7 +258,7 @@ pub struct BooleanVal {
 pub struct StringVal {
     r#type: ValueType,
     kind: NodeType,
-    pub(crate) value: String,
+    pub value: String,
 }
 
 #[derive(Debug, Clone)]
