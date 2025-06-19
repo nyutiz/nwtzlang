@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use crate::nwtz::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, NullVal, NumberVal, Parser, StringVal};
-mod nwtz;
+pub mod nwtz;
 
 pub fn interpreter_to_vec_string(input: String) -> Vec<String> {
     let mut env = make_global_env();
