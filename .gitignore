@@ -1,3 +1,5 @@
 /target
 .idea/easycode.ignore
 .idea/easycode/codebase-v2.xml
+Cargo.lock
+/pkg
