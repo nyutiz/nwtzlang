@@ -160,6 +160,8 @@ pub enum Token {
     Float(f64),
     #[regex(r"\d+", |lex| lex.slice().parse::<i32>().unwrap())]
     Integer(i32),
+    #[regex(r"__([A-Za-z_][A-Za-z0-9_]*)__", |lex| {let slice = lex.slice();let inner = &slice[2..slice.len() - 2];inner.to_string()})]
+    DoubleUnderscoreIdent(String),
     #[token("true")]
     True,
     #[token("false")]
