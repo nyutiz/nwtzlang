@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::nwtz::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, NullVal, NumberVal, Parser, StringVal};
+use crate::nwtz::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, Environment, NullVal, NumberVal, Parser, Program, RuntimeVal, Stmt, StringVal, Token};
 pub mod nwtz;
 
 pub fn interpreter_to_vec_string(input: String) -> Vec<String> {
@@ -58,6 +58,22 @@ pub fn interpreter_to_vec_string(input: String) -> Vec<String> {
     let ast = parser.produce_ast();
     let _ = evaluate(Box::new(ast), &mut env);
     output.lock().unwrap().clone()
+}
+
+pub fn tokenize_to_vec_token(input: String) -> Vec<Token>{
+    tokenize(input)
+}
+
+pub fn parse_tokens_to_parser(tokens: Vec<Token>) -> Parser{
+    Parser::new(tokens)
+}
+
+pub fn produce_ast_from_parser(mut parser: Parser) -> Program{
+    parser.produce_ast()
+}
+
+pub fn evaluate_runtime(ast: Program, env: &mut Environment) ->  Box<dyn RuntimeVal>{
+    evaluate(Box::new(ast), env)
 }
 
 /*
