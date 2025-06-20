@@ -1,0 +1,17 @@
+## + => Fait, - =>  Pas Fait ##
+
+Declarations de variables +
+Appel variables +
+False, True, Null +
+Conditions +
+Fonctions, Fonctions Natives +
+Import de fichiers +
+Integer, Float, String, "String"  +
+Array +
+Calculs, Priorités (% Ne fonctionne pas) +
+
+Impl d'objets -
+Boucles For, While -
+Comparaisons Or, And -
+
+Utilisation de New (pas utile, les objets se définissent seuls)

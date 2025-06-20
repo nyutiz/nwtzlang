@@ -191,7 +191,7 @@ pub enum NodeType {
     ImportAst,
     IfStatement,
 
-// Expressions
+    // Expressions
     AssignmentExpr,
     MemberExpr,
     CallExpr,
