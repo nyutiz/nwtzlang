@@ -1,6 +1,5 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::nwtz::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, Environment, NullVal, NumberVal, Parser, Program, RuntimeVal, Stmt, StringVal, Token};
+use crate::nwtz::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, Environment, NullVal, NumberVal, Parser, Program, RuntimeVal, StringVal, Token};
 pub mod nwtz;
 
 pub fn interpreter_to_vec_string(input: String) -> Vec<String> {

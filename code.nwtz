@@ -2,6 +2,12 @@ with _test;
 
 log(Test);
 
+fn __hello__ (){
+    log(45454);
+}
+
+__hello__();
+
 object = 6;
 
 obj truc {
