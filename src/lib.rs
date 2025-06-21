@@ -1776,7 +1776,7 @@ pub fn make_global_env() -> Environment {
     env
 }
 
-pub fn interpreter_to_vec_string(mut env: Environment,input: String) -> Vec<String> {
+pub fn interpreter_to_vec_string(mut env: &Environment, input: String) -> Vec<String> {
     let output = Arc::new(Mutex::new(Vec::<String>::new()));
     let output_for_native = output.clone();
 
