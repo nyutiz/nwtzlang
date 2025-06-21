@@ -3,13 +3,12 @@ use std::cell::RefCell;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
-use std::{fs, thread};
+use std::{fs};
 use std::rc::Rc;
 use logos::Logos;
 use once_cell::sync::Lazy;
 use crate::nwtz::ValueType::{Boolean, NativeFn, Null, Number};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use crate::nwtz::NodeType::Identifier;
@@ -1301,6 +1300,11 @@ pub fn tokenize(source: String) -> Vec<Token> {
 }
 
 pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal> {
+
+    env.declare_var("null".to_string(), mk_null());
+    env.declare_var("true".to_string(), mk_bool(true));
+    env.declare_var("false".to_string(), mk_bool(false));
+    
     match ast_node.kind() {
         NodeType::NumericLiteral => {
             let literal = ast_node.as_any().downcast_ref::<LiteralExpr>()
@@ -1726,41 +1730,10 @@ pub fn native_fs_read(args: Vec<Box<dyn RuntimeVal>>, _env: &mut Environment) ->
     })
 }
 
-pub fn make_global_env() -> Environment {
-    let mut env = Environment::new(None);
-
-    env.declare_var("null".to_string(), mk_null());
-    env.declare_var("true".to_string(), mk_bool(true));
-    env.declare_var("false".to_string(), mk_bool(false));
-    
-
-    env.declare_var(
-        "time".to_string(),
-        mk_native_fn(Arc::new(|_args: Vec<Box<dyn RuntimeVal>>, _scope: &mut Environment| {
-            mk_number(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as f64 / 1000.0)
-        })),
-    );
-
-    env.declare_var(
-        "sleep".to_string(),
-        mk_native_fn(Arc::new(move |_args, _| {
-            mk_null()
-        })),
-    );
-    
-    let registry = native_registry();
-    for (name, func) in registry {
-        env.declare_var(
-            name.to_string(),
-            mk_native_fn(func.clone())
-        );
-    }
-    env
-}
 
 macro_rules! register_natives {
     ( $($name:expr => $func:path),* $(,)? ) => {
-        fn native_registry() -> HashMap<&'static str, FunctionCall> {
+        pub fn native_registry() -> HashMap<&'static str, FunctionCall> {
             let mut m = HashMap::new();
             $(
                 m.insert($name, Arc::new($func) as FunctionCall);

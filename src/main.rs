@@ -1,7 +1,8 @@
 use std::{fs, io};
 use std::io::Write;
 use std::sync::Arc;
-use crate::nwtz::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, NullVal, NumberVal, Parser, StringVal};
+use nwtzlang::{evaluate_runtime, make_global_env};
+use crate::nwtz::{evaluate, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, NullVal, NumberVal, Parser, StringVal};
 
 mod nwtz;
 
@@ -79,7 +80,7 @@ fn main() {
             let ast = parser.produce_ast();
             //println!("{:#?}", ast);
             
-            let _result = evaluate(Box::new(ast), &mut env);
+            let _result = evaluate_runtime(Box::new(ast), &mut env);
         }
 
 
@@ -87,7 +88,7 @@ fn main() {
         let mut parser = Parser::new(tokens);
         let program = parser.produce_ast().merge_imports();
 
-        let _res = evaluate(Box::new(program), &mut env);
+        let _res = evaluate_runtime(Box::new(program), &mut env);
         //println!("{:#?}", res);
     }
 

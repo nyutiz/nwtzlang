@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
-use crate::nwtz::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, Environment, NullVal, NumberVal, Parser, Program, RuntimeVal, StringVal, Token};
+use std::time::SystemTime;
+use crate::nwtz::{evaluate, mk_native_fn, mk_null, mk_number, native_registry, tokenize, ArrayVal, BooleanVal, Environment, NullVal, NumberVal, Parser, Program, RuntimeVal, StringVal, Token};
 pub mod nwtz;
 
 pub fn interpreter_to_vec_string(mut env: Environment,input: String) -> Vec<String> {
@@ -72,6 +73,34 @@ pub fn produce_ast_from_parser(mut parser: Parser) -> Program{
 pub fn evaluate_runtime(ast: Program, env: &mut Environment) ->  Box<dyn RuntimeVal>{
     evaluate(Box::new(ast), env)
 }
+
+pub fn make_global_env() -> nwtz::Environment {
+    let mut env = Environment::new(None);
+
+    env.declare_var(
+        "time".to_string(),
+        mk_native_fn(Arc::new(|_args: Vec<Box<dyn RuntimeVal>>, _scope: &mut Environment| {
+            mk_number(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as f64 / 1000.0)
+        })),
+    );
+
+    env.declare_var(
+        "sleep".to_string(),
+        mk_native_fn(Arc::new(move |_args, _| {
+            mk_null()
+        })),
+    );
+
+    let registry = native_registry();
+    for (name, func) in registry {
+        env.declare_var(
+            name.to_string(),
+            mk_native_fn(func.clone())
+        );
+    }
+    env
+}
+
 
 /*
 pub fn interpreter_with_import_to_vec_string(input: String, ) -> Vec<String> {
