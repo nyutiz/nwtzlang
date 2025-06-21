@@ -2,9 +2,7 @@ use std::sync::{Arc, Mutex};
 use crate::nwtz::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, Environment, NullVal, NumberVal, Parser, Program, RuntimeVal, StringVal, Token};
 pub mod nwtz;
 
-pub fn interpreter_to_vec_string(input: String) -> Vec<String> {
-    let mut env = make_global_env();
-
+pub fn interpreter_to_vec_string(mut env: Environment,input: String) -> Vec<String> {
     let output = Arc::new(Mutex::new(Vec::<String>::new()));
     let output_for_native = output.clone();
 

@@ -3,13 +3,13 @@ use std::cell::RefCell;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
-use std::{fs};
+use std::{fs, thread};
 use std::rc::Rc;
 use logos::Logos;
 use once_cell::sync::Lazy;
 use crate::nwtz::ValueType::{Boolean, NativeFn, Null, Number};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use crate::nwtz::NodeType::Identifier;
@@ -1732,13 +1732,19 @@ pub fn make_global_env() -> Environment {
     env.declare_var("null".to_string(), mk_null());
     env.declare_var("true".to_string(), mk_bool(true));
     env.declare_var("false".to_string(), mk_bool(false));
-
-
+    
 
     env.declare_var(
         "time".to_string(),
         mk_native_fn(Arc::new(|_args: Vec<Box<dyn RuntimeVal>>, _scope: &mut Environment| {
             mk_number(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as f64 / 1000.0)
+        })),
+    );
+
+    env.declare_var(
+        "sleep".to_string(),
+        mk_native_fn(Arc::new(move |_args, _| {
+            mk_null()
         })),
     );
     
