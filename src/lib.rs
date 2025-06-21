@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
 use std::{fs};
 use std::rc::Rc;
-use logos::Logos;
+use logos::{Logos, Source};
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -233,7 +233,7 @@ pub struct NullVal {
 #[derive(Debug, Clone)]
 pub struct ArrayVal {
     pub r#type: ValueType,
-    pub elements: Rc<RefCell<Vec<Box<dyn RuntimeVal>>>>,
+    pub elements: Arc<Mutex<Vec<Box<dyn RuntimeVal>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -277,7 +277,7 @@ pub struct ArrayLiteral {
 #[derive(Debug, Clone)]
 pub struct ObjectVal {
     pub r#type: ValueType,
-    pub properties:  Rc<RefCell<HashMap<String, Box<dyn RuntimeVal>>>>,
+    pub properties:  Arc<Mutex<HashMap<String, Box<dyn RuntimeVal>>>>,
 }
 
 #[derive(Debug)]
@@ -379,7 +379,7 @@ pub struct FunctionVal {
     value_type: ValueType,
     name: String,
     parameters: Vec<String>,
-    declaration_env: Rc<RefCell<Environment>>,
+    declaration_env: Arc<Mutex<Environment>>,
     body: Arc<Vec<Box<dyn Stmt>>>,
 }
 
@@ -1423,7 +1423,7 @@ pub fn eval_array_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
 
     Box::from(ArrayVal {
         r#type: ValueType::Array,
-        elements: Rc::new(RefCell::new(elements)),
+        elements: Arc::new(Mutex::new(elements)),
     })
 }
 
@@ -1443,7 +1443,7 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
         env.assign_var(ident.name.clone(), new_value)
     } else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
         let object_val = evaluate(member.object.clone(), env);
-        if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
+        if let Some(mut obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
             let prop_name = if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
                 ident.name.clone()
             } else {
@@ -1452,7 +1452,7 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
             obj.properties.borrow_mut().insert(prop_name, new_value.clone());
             return new_value;
         }
-        else if let Some(arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
+        else if let Some(mut arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
             let index_val = evaluate(member.property.clone(), env);
             if let Some(num) = index_val.as_any().downcast_ref::<NumberVal>() {
                 let index = num.value as usize;
@@ -1497,7 +1497,7 @@ pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
 
     let object_val = evaluate(member.object, env);
 
-    if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
+    if let Some(mut obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
         let prop_name = if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
             ident.name.clone()
         } else {
@@ -1620,7 +1620,7 @@ pub fn eval_object_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
 
     Box::from(ObjectVal {
         r#type: ValueType::Object,
-        properties: Rc::new(RefCell::new(props)),
+        properties: Arc::new(Mutex::new(props)),
     })
 }
 
@@ -1641,7 +1641,7 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
         return (native.call)(args, env);
     }
 
-    if let Some(func) = callee.as_any().downcast_ref::<FunctionVal>() {
+    if let Some(mut func) = callee.as_any().downcast_ref::<FunctionVal>() {
         let decl_env = func.declaration_env.borrow_mut();
         let mut scope = Environment::new(Some(Box::new(decl_env.clone())));
         if args.len() != func.parameters.len() {
@@ -1679,7 +1679,7 @@ pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &mut Environment) -> 
         parameters: func.parameters,
         name: func.name.clone(),
         body: Arc::new(func.body),
-        declaration_env: Rc::new(RefCell::new(env.clone())),
+        declaration_env: Arc::new(Mutex::new(env.clone())),
     };
 
     //let decl_env : &mut Environment = unsafe {&mut *function_val.declaration_env} ;
@@ -1714,7 +1714,7 @@ pub fn mk_native_fn(call: FunctionCall) -> Box<NativeFnValue> {
 pub fn _mk_array(elements: Vec<Box<dyn RuntimeVal>>) -> Box<ArrayVal> {
     Box::from(ArrayVal {
         r#type: ValueType::Array,
-        elements: Rc::new(elements.into()),
+        elements: Arc::new(Mutex::new(elements.into())),
     })
 }
 
