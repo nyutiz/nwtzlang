@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::cell::RefCell;
+use std::borrow::Borrow;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
@@ -1449,7 +1449,7 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
             } else {
                 panic!("Member expression expected an identifier for non-computed property");
             };
-            obj.properties.borrow_mut().insert(prop_name, new_value.clone());
+            obj.properties.borrow().insert(prop_name, new_value.clone());
             return new_value;
         }
         else if let Some(mut arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
@@ -1457,7 +1457,8 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
             if let Some(num) = index_val.as_any().downcast_ref::<NumberVal>() {
                 let index = num.value as usize;
                 if index < arr.elements.borrow().len() {
-                    arr.elements.borrow_mut()[index] = new_value.clone();
+                    arr.elements.borrow()[index] = new_value.clone();
+                    arr.elements.borrow()[index] = new_value.clone();
                     return new_value;
                 } else {
                     panic!(
@@ -1504,7 +1505,7 @@ pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
             panic!("Member expression expected an identifier for a non-computed property");
         };
 
-        match obj.properties.borrow_mut().get(&prop_name) {
+        match obj.properties.borrow().get(&prop_name) {
             Some(val) => val.clone(),
             None => panic!("The property '{}' does not exist in the object", prop_name),
         }
@@ -1642,7 +1643,7 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
     }
 
     if let Some(mut func) = callee.as_any().downcast_ref::<FunctionVal>() {
-        let decl_env = func.declaration_env.borrow_mut();
+        let decl_env = func.declaration_env.borrow();
         let mut scope = Environment::new(Some(Box::new(decl_env.clone())));
         if args.len() != func.parameters.len() {
             panic!(
