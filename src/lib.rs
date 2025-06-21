@@ -73,7 +73,7 @@ impl Clone for Box<dyn RuntimeVal> {
     }
 }
 
-pub trait RuntimeVal: Debug + RuntimeValClone  {
+pub trait RuntimeVal: Debug + RuntimeValClone + Send + Sync   {
     fn value_type(&self) -> ValueType;
     fn as_any(&self) -> &dyn Any;
 }
