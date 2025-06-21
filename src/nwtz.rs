@@ -1304,7 +1304,7 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
     env.declare_var("null".to_string(), mk_null());
     env.declare_var("true".to_string(), mk_bool(true));
     env.declare_var("false".to_string(), mk_bool(false));
-    
+
     match ast_node.kind() {
         NodeType::NumericLiteral => {
             let literal = ast_node.as_any().downcast_ref::<LiteralExpr>()
