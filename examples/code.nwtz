@@ -7,6 +7,14 @@ obj truc {
     age: String,
 };
 
+fn hello(arg){
+    fn say_hello(){
+        log(arg);
+    }
+}
+
+hello("HEY");
+
 truc.age = object;
 
 log(truc.age);

@@ -3,8 +3,7 @@ use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
 use std::{fs};
-use std::borrow::Borrow;
-use logos::{Logos, Source};
+use logos::{Logos};
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -721,7 +720,6 @@ pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
 }
-
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, position: 0 }
@@ -1180,9 +1178,7 @@ impl Parser {
         let mut elements: Vec<Box<dyn Stmt>> = Vec::new();
 
         if *self.at() != Token::RBracket {
-            // On parse le premier élément
             elements.push(self.parse_expr());
-            // Et les suivants séparés par des virgules
             while *self.at() == Token::Comma {
                 self.eat();
                 elements.push(self.parse_expr());
@@ -1442,7 +1438,7 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
         env.assign_var(ident.name.clone(), new_value)
     } else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
         let object_val = evaluate(member.object.clone(), env);
-        if let Some(mut obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
+        if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
             let prop_name = if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
                 ident.name.clone()
             } else {
@@ -1451,7 +1447,7 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
             obj.properties.lock().unwrap().insert(prop_name, new_value.clone());
             return new_value;
         }
-        else if let Some(mut arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
+        else if let Some(arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
             let index_val = evaluate(member.property.clone(), env);
             if let Some(num) = index_val.as_any().downcast_ref::<NumberVal>() {
                 let index = num.value as usize;
@@ -1497,7 +1493,7 @@ pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
 
     let object_val = evaluate(member.object, env);
 
-    if let Some(mut obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
+    if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
         let prop_name = if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
             ident.name.clone()
         } else {
@@ -1568,7 +1564,7 @@ pub fn eval_numeric_binary_expr(lhs: &NumberVal, rhs: &NumberVal, operator: &str
         ">=" => Box::from(BooleanVal { r#type: Boolean, value: lhs_value >= rhs_value }),
         "<=" => Box::from(BooleanVal { r#type: Boolean, value: lhs_value <= rhs_value }),
         "!=" => Box::from(BooleanVal { r#type: Boolean, value: lhs_value != rhs_value }),
-        "="  => Box::from(BooleanVal { r#type: Boolean, value: lhs_value == rhs_value }),
+        "=="  => Box::from(BooleanVal { r#type: Boolean, value: lhs_value == rhs_value }),
 
         _ => panic!("Unknown binary operator: {}", operator),
     }
@@ -1641,7 +1637,7 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
         return (native.call)(args, env);
     }
 
-    if let Some(mut func) = callee.as_any().downcast_ref::<FunctionVal>() {
+    if let Some(func) = callee.as_any().downcast_ref::<FunctionVal>() {
         let decl_env = func.declaration_env.lock().unwrap();
         let mut scope = Environment::new(Some(Box::new(decl_env.clone())));
         if args.len() != func.parameters.len() {
@@ -1776,7 +1772,7 @@ pub fn make_global_env() -> Environment {
     env
 }
 
-pub fn interpreter_to_vec_string(mut env: &Environment, input: String) -> Vec<String> {
+pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Vec<String> {
     let output = Arc::new(Mutex::new(Vec::<String>::new()));
     let output_for_native = output.clone();
 
@@ -1829,4 +1825,45 @@ pub fn interpreter_to_vec_string(mut env: &Environment, input: String) -> Vec<St
     let ast = parser.produce_ast();
     let _ = evaluate(Box::new(ast), &mut env);
     output.lock().unwrap().clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, io};
+    use std::io::Write;
+    use crate::{evaluate, make_global_env, tokenize, Parser};
+
+    #[test]
+    fn main() {
+        let mut env = make_global_env();
+        
+        loop {
+
+            print!("> ");
+            io::stdout().flush().unwrap();
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).unwrap();
+            let input = input.trim();
+
+            if input.is_empty() {
+
+                let file = fs::read_to_string("code.nwtz").unwrap();
+                let tokens = tokenize(file.clone());
+                let mut parser = Parser::new(tokens);
+                let ast = parser.produce_ast();
+                //println!("{:#?}", ast);
+
+                let _result = evaluate(Box::new(ast), &mut env);
+            }
+
+
+            let tokens = tokenize(input.to_string());
+            let mut parser = Parser::new(tokens);
+            let program = parser.produce_ast().merge_imports();
+
+            let _res = evaluate(Box::new(program), &mut env);
+            //println!("{:#?}", res);
+        }
+    }
 }

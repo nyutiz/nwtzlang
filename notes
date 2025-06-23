@@ -9,6 +9,7 @@ Import de fichiers +
 Integer, Float, String, "String"  +
 Array +
 Calculs, Priorités (% Ne fonctionne pas) +
+Closures +
 
 Impl d'objets -
 Boucles For, While -
