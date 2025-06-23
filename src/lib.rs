@@ -188,11 +188,13 @@ pub enum NodeType {
     FunctionDeclaration,
     ImportAst,
     IfStatement,
+    ForStatement,
 
     // Expressions
     AssignmentExpr,
     MemberExpr,
     CallExpr,
+    
     // Literals
     Property,
     ObjectLiteral,
@@ -260,6 +262,15 @@ pub struct StringVal {
 }
 
 #[derive(Debug, Clone)]
+pub struct ForStatement {
+    pub kind: NodeType,
+    pub initializer: Option<Box<dyn Stmt>>,
+    pub condition: Option<Box<dyn Stmt>>,
+    pub increment: Option<Box<dyn Stmt>>,
+    pub body: Vec<Box<dyn Stmt>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct IfStatement {
     pub kind: NodeType,
     pub condition: Box<dyn Stmt>,
@@ -312,8 +323,6 @@ pub struct NullLiteral {
     kind: NodeType,
     value: String,
 }
-
-
 
 #[derive(Debug)]
 #[derive(Clone)]
@@ -534,7 +543,14 @@ impl Stmt for BooleanLiteral {
     fn as_any(&self) -> &dyn Any { self }
 }
 
+
 impl Stmt for IfStatement {
+    fn kind(&self) -> NodeType { self.kind.clone() }
+    fn value(&self) -> Option<String> { None }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+impl Stmt for ForStatement {
     fn kind(&self) -> NodeType { self.kind.clone() }
     fn value(&self) -> Option<String> { None }
     fn as_any(&self) -> &dyn Any { self }
@@ -795,6 +811,9 @@ impl Parser {
             Token::If => {
                 self.parse_if_statement()
             }
+            Token::For => {
+                self.parse_for_statement()
+            }
             _ => self.parse_expr(),
         }
     }
@@ -831,6 +850,80 @@ impl Parser {
 
     }
 
+    fn parse_for_statement(&mut self) -> Box<dyn Stmt> {
+        
+        self.eat();
+        self.expect(Token::LParen, "`(` attendu après `for`");
+
+        let initializer: Option<Box<dyn Stmt>>  = if !matches!(self.at(), &Token::Semicolon) {
+            Some(self.parse_stmt())
+        } else {
+            None
+        };
+        self.expect(Semicolon, "`;` attendu après l'initialisation du for");
+
+        let condition: Option<Box<dyn Stmt>>  = if !matches!(self.at(), &Semicolon) {
+            let left: Box<dyn Stmt> = match self.eat() {
+                Token::Identifier(name) =>
+                    Box::new(IdentifierExpr { kind: Identifier, name }),
+                Token::Integer(n) =>
+                    Box::new(LiteralExpr    { kind: NodeType::NumericLiteral, value: n as f64 }),
+                t => panic!("Expr. attendue en condition, pas {:?}", t),
+            };
+            
+            let op = match self.eat() {
+                Token::Equal   => "=",
+                Token::Greater => ">",
+                Token::Lower   => "<",
+                _ => panic!("Opérateur attendu (=, > ou <)"),
+            }.to_string();
+            
+            let right: Box<dyn Stmt> = match self.eat() {
+                Token::Identifier(name) =>
+                    Box::new(IdentifierExpr { kind: Identifier, name }),
+                Token::Integer(n) =>
+                    Box::new(LiteralExpr { kind: NodeType::NumericLiteral, value: n as f64 }),
+                t => panic!("Expr. attendue après opérateur, pas {:?}", t),
+            };
+            
+            Some(Box::new(BinaryExpr {
+                kind: NodeType::BinaryExpression,
+                left,
+                operator: op,
+                right,
+            }))
+        } else {
+            None
+        };
+        self.expect(Token::Semicolon, "`;` attendu après la condition du for");
+
+        let increment = if !matches!(self.at(), &Token::RParen) {
+            Some(self.parse_stmt())
+        } else {
+            None
+        };
+
+        self.expect(Token::LBrace, "`{` attendu pour ouvrir le corps du for");
+
+        self.expect(Token::RParen, "`)` attendu après l’incrément du for");
+
+        self.expect(Token::LBrace, "`{` attendu pour ouvrir le corps du for");
+        
+        let mut body = Vec::new();
+        while self.not_eof() && *self.at() != Token::RBrace {
+            body.push(self.parse_stmt());
+        }
+        self.expect(Token::RBrace, "`}` attendu pour fermer le for");
+
+        Box::new(ForStatement {
+            kind: NodeType::ForStatement,
+            initializer,
+            condition,
+            increment,
+            body,
+        })
+    }
+
     fn parse_if_statement(&mut self) -> Box<dyn Stmt> {
         self.eat();
 
@@ -838,8 +931,8 @@ impl Parser {
             Token::Identifier(name) =>
                 Box::new(IdentifierExpr { kind: Identifier, name }),
             Token::Integer(n) =>
-                Box::new(LiteralExpr    { kind: NodeType::NumericLiteral, value: n as f64 }),
-            _ => panic!("Variable ou entier attendu après `if`"),
+                Box::new(LiteralExpr { kind: NodeType::NumericLiteral, value: n as f64 }),
+            t => panic!("Variable ou entier attendu après `if` pas {:?}", t),
         };
 
         let operator = match self.eat() {
@@ -1368,8 +1461,50 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
 
         },
         NodeType::IfStatement => eval_if_statement(ast_node, env),
+        NodeType::ForStatement => eval_for_statement(ast_node, env),
     }
 }
+
+pub fn eval_for_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+    let for_stmt = ast_node
+        .as_any()
+        .downcast_ref::<ForStatement>()
+        .expect("Expected a ForStatement node");
+
+    if let Some(init_stmt) = &for_stmt.initializer {
+        evaluate(init_stmt.clone(), env);
+    }
+
+    let mut last: Box<dyn RuntimeVal + Send + Sync> = mk_null();
+
+    loop {
+        if let Some(cond_stmt) = &for_stmt.condition {
+            let cond_val = evaluate(cond_stmt.clone(), env);
+            let keep_going = cond_val
+                .as_any()
+                .downcast_ref::<BooleanVal>()
+                .map(|b| b.value)
+                .unwrap_or_else(|| panic!("Condition du for n'est pas un booléen"));
+            if !keep_going {
+                break;
+            }
+        }
+
+        for stmt in &for_stmt.body {
+            let val = evaluate(stmt.clone(), env);
+            println!("DEBUG ─ evaluate renvoie : {:?}", val);
+            last = val;        
+        }
+
+        
+        if let Some(inc_stmt) = &for_stmt.increment {
+            evaluate(inc_stmt.clone(), env);
+        }
+    }
+
+    last
+}
+
 
 pub fn eval_if_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
     let if_stmt = ast_node.as_any().downcast_ref::<IfStatement>()

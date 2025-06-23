@@ -8,12 +8,10 @@ obj truc {
 };
 
 fn hello(arg){
-    fn say_hello(){
-        log(arg);
-    }
+    arg + 20
 }
 
-hello("HEY");
+log(hello(5));
 
 truc.age = object;
 
