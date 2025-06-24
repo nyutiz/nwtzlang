@@ -1,0 +1,56 @@
+obj truc {
+    name: "How are you today",
+    age: Function,
+};
+
+log(truc.age);
+
+a : String = "éfdqgfqsfq";
+
+obj truc {
+    age: Integer,
+};
+
+truc.age = "Hey";
+
+log(a);
+
+say("FAaf");
+
+fn say(x){
+    log(x);
+}
+
+fn counter(init, max){
+    for (i = init; i < max; i = i+1;){
+        log(i);
+    }
+}
+
+counter(0, 5);
+
+fn read(name){
+    log(_fs_read(name));
+}
+
+read(".gitignore");
+
+a : String = "JE SUIS UN STR";
+a : Boolean = true;
+log(a);
+
+b: Boolean = true;
+b = false;
+log(b);
+
+c: Array = [54, "HELLO"];
+log(c);
+
+obj truc {
+    age: "544654654654",
+    name: String
+};
+
+truc.name = 123;
+
+log(truc.name);

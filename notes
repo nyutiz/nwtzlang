@@ -10,7 +10,12 @@ Integer, Float, String, "String"  +
 Array +
 Calculs, Priorités (% Ne fonctionne pas) +
 Closures +
+For +
+ValueType définis explicitement par : +
+Commentaires // +
 
+
+While -
 Impl d'objets -
 Boucles For, While -
 Comparaisons Or, And -

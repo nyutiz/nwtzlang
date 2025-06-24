@@ -6,12 +6,12 @@ use std::{fs};
 use logos::{Logos};
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{SystemTime};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use crate::NodeType::Identifier;
 use crate::Token::{LBrace, RBrace, Semicolon};
-use crate::ValueType::{Boolean, NativeFn, Null, Number};
+use crate::ValueType::{Boolean, NativeFn, Null, Integer, Object, Function, Array};
 
 pub trait Stmt: Debug + StmtClone + Send + Sync {
     fn kind(&self) -> NodeType;
@@ -72,7 +72,7 @@ impl Clone for Box<dyn RuntimeVal + Send + Sync> {
 }
 
 pub trait RuntimeVal: Debug + RuntimeValClone + Send + Sync   {
-    fn value_type(&self) -> ValueType;
+    fn value_type(&self) -> Option<ValueType>;
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -110,6 +110,8 @@ pub enum Token {
     In,
     #[token("for")]
     For,
+    #[token("const")]
+    Const,
     //#[token("log")]
     //Log,
     //#[token("main")]
@@ -167,10 +169,10 @@ pub enum Token {
     EOF,
 }
 
-#[derive(Debug, Clone, EnumIter)]
+#[derive(Debug, Clone, EnumIter, PartialEq)]
 pub enum ValueType {
     Null,
-    Number,
+    Integer,
     Boolean,
     Object,
     Array,
@@ -194,7 +196,7 @@ pub enum NodeType {
     AssignmentExpr,
     MemberExpr,
     CallExpr,
-    
+
     // Literals
     Property,
     ObjectLiteral,
@@ -217,6 +219,7 @@ static RESERVED_NAMES: Lazy<HashSet<String>> = Lazy::new(|| {
 pub struct Environment {
     parent: Option<Box<Environment>>,
     variables: HashMap<String, Box<dyn RuntimeVal + Send + Sync>>,
+    var_types: HashMap<String, Option<ValueType>>,
 }
 
 #[derive(Debug, Clone)]
@@ -227,12 +230,12 @@ pub struct ImportAst {
 
 #[derive(Debug, Clone)]
 pub struct NullVal {
-    pub r#type: ValueType,
+    pub r#type: Option<ValueType>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ArrayVal {
-    pub r#type: ValueType,
+    pub r#type: Option<ValueType>,
     pub elements: Arc<Mutex<Vec<Box<dyn RuntimeVal + Send + Sync>>>>,
 }
 
@@ -243,21 +246,21 @@ pub struct BooleanLiteral {
 }
 
 #[derive(Debug, Clone)]
-pub struct NumberVal {
-    pub r#type: ValueType,
+pub struct IntegerVal {
+    pub r#type: Option<ValueType>,
     pub value: f64,
 }
 
 #[derive(Debug, Clone)]
 pub struct BooleanVal {
-    pub r#type: ValueType,
+    pub r#type: Option<ValueType>,
     pub value: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct StringVal {
-    r#type: ValueType,
-    kind: NodeType,
+    pub r#type: Option<ValueType>,
+    pub kind: NodeType,
     pub value: String,
 }
 
@@ -285,30 +288,30 @@ pub struct ArrayLiteral {
 
 #[derive(Debug, Clone)]
 pub struct ObjectVal {
-    pub r#type: ValueType,
+    pub r#type: Option<ValueType>,
     pub properties:  Arc<Mutex<HashMap<String, Box<dyn RuntimeVal + Send + Sync>>>>,
 }
 
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct Property {
-    kind: NodeType,
-    key: String,
-    value: Option<Box<dyn Stmt>>,
+    pub kind: NodeType,
+    pub key: String,
+    pub value: Option<Box<dyn Stmt>>,
 }
 
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct ObjectLiteral {
-    kind: NodeType,
-    properties: Vec<Property>,
+    pub kind: NodeType,
+    pub properties: Vec<Property>,
 }
 
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LiteralExpr {
-    kind: NodeType,
-    value: f64,
+    pub kind: NodeType,
+    pub value: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -320,33 +323,33 @@ pub struct IdentifierExpr {
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct NullLiteral {
-    kind: NodeType,
-    value: String,
+    pub kind: NodeType,
+    pub value: String,
 }
 
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct BinaryExpr {
-    kind: NodeType,
-    left: Box<dyn Stmt>,
-    right: Box<dyn Stmt>,
-    operator: String,
+    pub kind: NodeType,
+    pub left: Box<dyn Stmt>,
+    pub right: Box<dyn Stmt>,
+    pub operator: String,
 }
 
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct AssignmentExpr {
-    kind: NodeType,
-    assigne: Box<dyn Stmt>,
-    value: Option<Box<dyn Stmt>>,
+    pub kind: NodeType,
+    pub assigne: Box<dyn Stmt>,
+    pub value: Option<Box<dyn Stmt>>,
 }
 
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct MemberExpr {
-    kind: NodeType,
-    object: Box<dyn Stmt>,
-    property: Box<dyn Stmt>,
+    pub kind: NodeType,
+    pub object: Box<dyn Stmt>,
+    pub property: Box<dyn Stmt>,
 }
 
 #[derive(Debug)]
@@ -356,45 +359,45 @@ pub struct CallExpr {
     pub caller: Box<dyn Stmt>,
     pub args: Vec<Box<dyn Stmt>>,
 }
-
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct Program {
-    kind: NodeType,
-    body: Vec<Box<dyn Stmt>>,
+    pub kind: NodeType,
+    pub body: Vec<Box<dyn Stmt>>,
 }
 
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct VariableDeclaration {
-    kind: NodeType,
-    identifier: String,
-    value: Option<Box<dyn Stmt>>,
+    pub kind: NodeType,
+    pub r#type: Option<ValueType>,
+    pub name: String,
+    pub value: Option<Box<dyn Stmt>>,
 }
 
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct FunctionDeclaration {
-    kind: NodeType,
-    parameters: Vec<String>,
-    name: String,
-    body: Vec<Box<dyn Stmt>>,
+    pub kind: NodeType,
+    pub parameters: Vec<String>,
+    pub name: String,
+    pub body: Vec<Box<dyn Stmt>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionVal {
-    value_type: ValueType,
-    name: String,
-    parameters: Vec<String>,
-    declaration_env: Arc<Mutex<Environment>>,
-    body: Arc<Vec<Box<dyn Stmt>>>,
+    pub r#type: Option<ValueType>,
+    pub name: String,
+    pub parameters: Vec<String>,
+    pub declaration_env: Arc<Mutex<Environment>>,
+    pub body: Arc<Vec<Box<dyn Stmt>>>,
 }
 
 pub type FunctionCall =
 Arc<dyn Fn(Vec<Box<dyn RuntimeVal + Send + Sync>>, &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> + Send + Sync>;
 #[derive(Clone)]
 pub struct NativeFnValue {
-    pub value_type: ValueType,
+    pub r#type: Option<ValueType>,
     pub call: FunctionCall,
 }
 impl Environment {
@@ -402,23 +405,43 @@ impl Environment {
         Environment {
             parent,
             variables: HashMap::new(),
+            var_types: HashMap::new(),
         }
     }
-    
-    pub fn declare_var(&mut self, var_name: String, value: Box<dyn RuntimeVal + Send + Sync>) -> Box<dyn RuntimeVal + Send + Sync> {
-        
-        //if self.variables.contains_key(&var_name) {
-        //    panic!("Cannot declare variable {}. It is already defined.", var_name);
-        //}
-        self.variables.insert(var_name.clone(), value.clone());
-        value
+
+    pub fn set_var(&mut self, var_name: String, new_value: Box<dyn RuntimeVal + Send + Sync>, declared_type: Option<ValueType>, ) -> Box<dyn RuntimeVal + Send + Sync> {
+        if let Some(ty) = declared_type.clone() {
+            self.var_types.insert(var_name.clone(), Some(ty));
+        }
+
+        if self.var_types.contains_key(&var_name) {
+            match self.var_types.get(&var_name).unwrap() {
+                Some(expected) => {
+                    let actual = new_value
+                        .value_type()
+                        .expect("RuntimeVal should always have a type");
+                    if &actual != expected {
+                        panic!(
+                            "Type error: variable `{}` declared as `{:?}` but assigned `{:?}`",
+                            var_name, expected, actual
+                        );
+                    }
+                }
+                None => {}
+            }
+            self.variables.insert(var_name.clone(), new_value.clone());
+        }
+        else if let Some(parent) = &mut self.parent {
+            return parent.set_var(var_name.clone(), new_value.clone(), declared_type);
+        }
+        else {
+            self.var_types.insert(var_name.clone(), None);
+            self.variables.insert(var_name.clone(), new_value.clone());
+        }
+
+        new_value
     }
-    
-    pub fn assign_var(&mut self, var_name: String, value: Box<dyn RuntimeVal + Send + Sync>) -> Box<dyn RuntimeVal + Send + Sync> {
-        let env = self.resolve(&var_name);
-        env.variables.insert(var_name.clone(), value.clone());
-        value
-    }
+
     pub fn lookup_var(&mut self, var_name: String) -> Box<dyn RuntimeVal + Send + Sync> {
         let env = self.resolve(&var_name);
         env.variables.get(&var_name).unwrap().clone()
@@ -456,26 +479,27 @@ impl Program {
     }
 }
 impl VariableDeclaration {
-    pub fn new(identifier: String, value: Option<Box<dyn Stmt>>) -> Self {
+    pub fn new(identifier: String, value: Option<Box<dyn Stmt>>, r#type :Option<ValueType>) -> Self {
         Self {
             kind: NodeType::VariableDeclaration,
-            identifier,
+            r#type,
+            name: identifier,
             value,
         }
     }
 }
 impl RuntimeVal for NullVal {
-    fn value_type(&self) -> ValueType {
-        self.r#type.clone()
+    fn value_type(&self) -> Option<ValueType> {
+        Option::from(self.r#type.clone())
     }
 
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
-impl RuntimeVal for NumberVal {
-    fn value_type(&self) -> ValueType {
-        self.r#type.clone()
+impl RuntimeVal for IntegerVal {
+    fn value_type(&self) -> Option<ValueType> {
+        Option::from(self.r#type.clone())
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -484,8 +508,8 @@ impl RuntimeVal for NumberVal {
 }
 
 impl RuntimeVal for StringVal {
-    fn value_type(&self) -> ValueType {
-        self.r#type.clone()
+    fn value_type(&self) -> Option<ValueType> {
+        Option::from(self.r#type.clone())
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -493,8 +517,8 @@ impl RuntimeVal for StringVal {
     }
 }
 impl RuntimeVal for ArrayVal {
-    fn value_type(&self) -> ValueType {
-        self.r#type.clone()
+    fn value_type(&self) -> Option<ValueType> {
+        Option::from(self.r#type.clone())
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -503,8 +527,8 @@ impl RuntimeVal for ArrayVal {
 }
 
 impl RuntimeVal for NativeFnValue {
-    fn value_type(&self) -> ValueType {
-        self.value_type.clone()
+    fn value_type(&self) -> Option<ValueType> {
+        Option::from(NativeFn)
     }
     fn as_any(&self) -> &dyn Any {
         self
@@ -512,16 +536,16 @@ impl RuntimeVal for NativeFnValue {
 }
 
 impl RuntimeVal for FunctionVal {
-    fn value_type(&self) -> ValueType {
-        self.value_type.clone()
+    fn value_type(&self) -> Option<ValueType> {
+        Option::from(Function)
     }
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 impl RuntimeVal for BooleanVal {
-    fn value_type(&self) -> ValueType {
-        self.r#type.clone()
+    fn value_type(&self) -> Option<ValueType> {
+        Option::from(self.r#type.clone())
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -529,8 +553,8 @@ impl RuntimeVal for BooleanVal {
     }
 }
 impl RuntimeVal for ObjectVal {
-    fn value_type(&self) -> ValueType {
-        self.r#type.clone()
+    fn value_type(&self) -> Option<ValueType> {
+        Option::from(self.r#type.clone())
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -587,6 +611,7 @@ impl Stmt for LiteralExpr {
         self
     }
 }
+
 impl Stmt for ObjectLiteral {
     fn kind(&self) -> NodeType {
         self.kind.clone()
@@ -746,6 +771,22 @@ impl Parser {
         while self.not_eof() {
             program.body.push(self.parse_stmt());
         }
+
+        let (imports, without_imports): (Vec<_>, Vec<_>) =
+            program.body
+                .into_iter()
+                .partition(|stmt| stmt.kind() == NodeType::ImportAst);
+
+        let (fns, rest): (Vec<_>, Vec<_>) =
+            without_imports
+                .into_iter()
+                .partition(|stmt| stmt.kind() == NodeType::FunctionDeclaration);
+
+        program.body = Vec::new();
+        program.body.extend(imports);
+        program.body.extend(fns);
+        program.body.extend(rest);
+
         program
     }
 
@@ -794,10 +835,15 @@ impl Parser {
             Token::Identifier(_) if *self.peek() == Semicolon => {
                 let name = if let Token::Identifier(n) = self.eat() { n } else { unreachable!() };
                 self.eat();
-                Box::from(VariableDeclaration::new(name, None))
+                Box::from(VariableDeclaration::new(name, None, None))
             }
-            Token::Identifier(_) if *self.peek() == Token::Equal => {
-                self.parse_variable_declaration()
+            Token::Identifier(_) if *self.peek() == Token::Equal || *self.peek() == Token::Colon => {
+                self.parse_var_declaration()
+            }
+            Token::Const => {
+                // Faire en sorte que Const soit obligatoirement définie avec un Valuetype
+                todo!()
+                //self.parse_variable_declaration()
             }
             Token::Fn => {
                 self.parse_func_declaration()
@@ -851,16 +897,28 @@ impl Parser {
     }
 
     fn parse_for_statement(&mut self) -> Box<dyn Stmt> {
-        
+        /*
+        for (i = 0 ; i < 10 ; i = i+1) {}
+
+        pub struct ForStatement {
+            pub kind: NodeType,
+            pub initializer: Option<Box<dyn Stmt>>,
+            pub condition: Option<Box<dyn Stmt>>,
+            pub increment: Option<Box<dyn Stmt>>,
+            pub body: Vec<Box<dyn Stmt>>,
+        }
+         */
+
         self.eat();
+
         self.expect(Token::LParen, "`(` attendu après `for`");
 
-        let initializer: Option<Box<dyn Stmt>>  = if !matches!(self.at(), &Token::Semicolon) {
-            Some(self.parse_stmt())
+        let initializer: Option<Box<dyn Stmt>>  = if !matches!(self.at(), &Semicolon) {
+            Some(self.parse_var_declaration())
         } else {
             None
         };
-        self.expect(Semicolon, "`;` attendu après l'initialisation du for");
+        //self.expect(Semicolon, "`;` attendu après l'initialisation de i");
 
         let condition: Option<Box<dyn Stmt>>  = if !matches!(self.at(), &Semicolon) {
             let left: Box<dyn Stmt> = match self.eat() {
@@ -870,14 +928,14 @@ impl Parser {
                     Box::new(LiteralExpr    { kind: NodeType::NumericLiteral, value: n as f64 }),
                 t => panic!("Expr. attendue en condition, pas {:?}", t),
             };
-            
+
             let op = match self.eat() {
-                Token::Equal   => "=",
+                Token::Equal   => "==",
                 Token::Greater => ">",
                 Token::Lower   => "<",
                 _ => panic!("Opérateur attendu (=, > ou <)"),
             }.to_string();
-            
+
             let right: Box<dyn Stmt> = match self.eat() {
                 Token::Identifier(name) =>
                     Box::new(IdentifierExpr { kind: Identifier, name }),
@@ -885,7 +943,7 @@ impl Parser {
                     Box::new(LiteralExpr { kind: NodeType::NumericLiteral, value: n as f64 }),
                 t => panic!("Expr. attendue après opérateur, pas {:?}", t),
             };
-            
+
             Some(Box::new(BinaryExpr {
                 kind: NodeType::BinaryExpression,
                 left,
@@ -895,25 +953,22 @@ impl Parser {
         } else {
             None
         };
-        self.expect(Token::Semicolon, "`;` attendu après la condition du for");
+        self.expect(Semicolon, "`;` attendu après la condition du for");
 
-        let increment = if !matches!(self.at(), &Token::RParen) {
-            Some(self.parse_stmt())
+        let increment: Option<Box<dyn Stmt>> = if !matches!(self.at(), &Token::RParen) {
+            Some(self.parse_var_declaration())
         } else {
             None
         };
-
-        self.expect(Token::LBrace, "`{` attendu pour ouvrir le corps du for");
-
         self.expect(Token::RParen, "`)` attendu après l’incrément du for");
 
-        self.expect(Token::LBrace, "`{` attendu pour ouvrir le corps du for");
-        
+        self.expect(LBrace, "`{` attendu pour ouvrir le corps du for");
+
         let mut body = Vec::new();
-        while self.not_eof() && *self.at() != Token::RBrace {
+        while self.not_eof() && *self.at() != RBrace {
             body.push(self.parse_stmt());
         }
-        self.expect(Token::RBrace, "`}` attendu pour fermer le for");
+        self.expect(RBrace, "`}` attendu pour fermer le for");
 
         Box::new(ForStatement {
             kind: NodeType::ForStatement,
@@ -1061,26 +1116,78 @@ impl Parser {
             properties,
         });
 
-        Box::from(VariableDeclaration::new(name, Some(obj_literal)))
+        Box::from(VariableDeclaration::new(name, Some(obj_literal), Some(Object)))
     }
 
 
-    fn parse_variable_declaration(&mut self) -> Box<dyn Stmt> {
+    fn parse_var_declaration(&mut self) -> Box<dyn Stmt> {
         let identifier = match self.eat() {
             Token::Identifier(name) => name,
             token => panic!("Parser Error: Expected identifier, got {:?}", token),
         };
 
+        let var_type = if *self.at() == Token::Colon {
+            self.eat();
+            let ty_name = if let Token::Identifier(name) = self.eat() {
+                name
+            } else {
+                panic!("Parser Error: Expected type name after `:`, got {:?}", self.at());
+            };
+            let vt = ValueType::iter()
+                .find(|vt| format!("{:?}", vt) == ty_name)
+                .unwrap_or_else(|| panic!("Unknown type literal `{}`", ty_name));
+
+            Some(vt)
+        } else {
+            None
+        };
+
+
         let value = if *self.at() == Token::Equal {
             self.eat();
+
+            if let Some(expected) = var_type.as_ref() {
+                match self.at() {
+                    Token::StringLiteral(_) if *expected != ValueType::String => {
+                        panic!(
+                            "Parser Error: `{}` declared as `{:?}` but got a String",
+                            identifier, expected
+                        );
+                    }
+                    Token::Integer(_) if *expected != Integer => {
+                        panic!(
+                            "Parser Error: `{}` declared as `{:?}` but got an Integer",
+                            identifier, expected
+                        );
+                    }
+                    Token::True | Token::False if *expected != Boolean => {
+                        panic!(
+                            "Parser Error: `{}` declared as `{:?}` but got a Boolean",
+                            identifier, expected
+                        );
+                    }
+                    Token::Null if *expected != Null => {
+                        panic!(
+                            "Parser Error: `{}` declared as `{:?}` but got Null",
+                            identifier, expected
+                        );
+                    }
+                    _ => {
+
+                    }
+                }
+            }
             Some(self.parse_expr())
         } else {
             None
         };
+        
         self.expect(Semicolon, "Expected semicolon after variable declaration");
+                
         Box::from(VariableDeclaration {
             kind: NodeType::VariableDeclaration,
-            identifier,
+            r#type: var_type,
+            name: identifier,
             value,
         })
     }
@@ -1110,9 +1217,6 @@ impl Parser {
         let mut properties: Vec<Property> = Vec::new();
         while self.not_eof() && *self.at() != RBrace{
             let key = if let Token::Identifier(name) = self.eat() {
-                if name == "String"{
-                    
-                }
                 name
             } else {
                 panic!("Parser Error: Object literal key expected, got {:?}", self.at());
@@ -1263,11 +1367,11 @@ impl Parser {
 
         args
     }
-    
+
     fn parse_array_expr(&mut self) -> Box<dyn Stmt> {
         //self.expect(Token::LBracket, "Expected '[' to start array literal"); ]
-        
-        
+
+
         let mut elements: Vec<Box<dyn Stmt>> = Vec::new();
 
         if *self.at() != Token::RBracket {
@@ -1283,7 +1387,7 @@ impl Parser {
             kind: NodeType::ArrayLiteral,
             elements,
         })
-        
+
     }
 
     fn parse_member_expr(&mut self) -> Box<dyn Stmt>{
@@ -1334,7 +1438,7 @@ impl Parser {
                 let unquoted = value[1..value.len()-1].to_string();
 
                 Box::from(StringVal {
-                    r#type: ValueType::String,
+                    r#type: Option::from(ValueType::String),
                     kind: NodeType::StringLiteral,
                     value: unquoted,
                 })
@@ -1389,23 +1493,19 @@ pub fn tokenize(source: String) -> Vec<Token> {
 }
 
 pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
-
-    env.declare_var("null".to_string(), mk_null());
-    env.declare_var("true".to_string(), mk_bool(true));
-    env.declare_var("false".to_string(), mk_bool(false));
-
+    
     match ast_node.kind() {
         NodeType::NumericLiteral => {
             let literal = ast_node.as_any().downcast_ref::<LiteralExpr>()
                 .expect("Expected a LiteralExpr");
-            Box::from(NumberVal {
-                r#type: Number,
+            Box::from(IntegerVal {
+                r#type: Some(Integer),
                 value: literal.value,
             })
         },
         NodeType::BooleanLiteral => {
             let bool_node = ast_node.as_any().downcast_ref::<BooleanLiteral>().unwrap();
-            Box::from(BooleanVal { r#type: Boolean, value: bool_node.value })
+            Box::from(BooleanVal { r#type: Some(Boolean), value: bool_node.value })
         },
         NodeType::NullLiteral => {
             mk_null()
@@ -1426,13 +1526,13 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
             let str = ast_node.as_any().downcast_ref::<StringVal>()
                 .expect("Expected a LiteralExpr");
             Box::from(StringVal {
-                r#type: ValueType::String,
+                r#type: Some(ValueType::String),
                 kind: NodeType::StringLiteral,
                 value: str.value.clone(),
             })
         },
         NodeType::AssignmentExpr => {
-            eval_assignment(ast_node, env) 
+            eval_assignment(ast_node, env)
         },
         NodeType::ObjectLiteral => {
             eval_object_expr(ast_node, env)
@@ -1492,11 +1592,11 @@ pub fn eval_for_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box
 
         for stmt in &for_stmt.body {
             let val = evaluate(stmt.clone(), env);
-            println!("DEBUG ─ evaluate renvoie : {:?}", val);
-            last = val;        
+            //println!("DEBUG ─ evaluate renvoie : {:?}", val);
+            last = val;
         }
 
-        
+
         if let Some(inc_stmt) = &for_stmt.increment {
             evaluate(inc_stmt.clone(), env);
         }
@@ -1552,14 +1652,14 @@ pub fn eval_array_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
         .collect();
 
     Box::from(ArrayVal {
-        r#type: ValueType::Array,
+        r#type: Option::from(Array),
         elements: Arc::new(Mutex::new(elements)),
     })
 }
 
 
 
-pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal + Send + Sync> {
     let assignment = node
         .downcast::<AssignmentExpr>()
         .expect("Expected an AssignmentExpr node");
@@ -1570,31 +1670,39 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
     );
 
     if let Some(ident) = assignment.assigne.as_any().downcast_ref::<IdentifierExpr>() {
-        env.assign_var(ident.name.clone(), new_value)
-    } else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
+        let var_name = ident.name.clone();
+        
+        let result = env.set_var(var_name, new_value.clone(), None);
+
+        result
+    }
+    else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
         let object_val = evaluate(member.object.clone(), env);
+
         if let Some(obj) = object_val.as_any().downcast_ref::<ObjectVal>() {
-            let prop_name = if let Some(ident) = member.property.as_any().downcast_ref::<IdentifierExpr>() {
+            let prop_name = if let Some(ident) =
+                member.property.as_any().downcast_ref::<IdentifierExpr>()
+            {
                 ident.name.clone()
             } else {
                 panic!("Member expression expected an identifier for non-computed property");
             };
             obj.properties.lock().unwrap().insert(prop_name, new_value.clone());
-            return new_value;
+            new_value
         }
         else if let Some(arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
             let index_val = evaluate(member.property.clone(), env);
-            if let Some(num) = index_val.as_any().downcast_ref::<NumberVal>() {
+            if let Some(num) = index_val.as_any().downcast_ref::<IntegerVal>() {
                 let index = num.value as usize;
-                if index < arr.elements.lock().unwrap().len() {
-                    arr.elements.lock().unwrap()[index] = new_value.clone();
-                    arr.elements.lock().unwrap()[index] = new_value.clone();
-                    return new_value;
+                let mut elems = arr.elements.lock().unwrap();
+                if index < elems.len() {
+                    elems[index] = new_value.clone();
+                    new_value
                 } else {
                     panic!(
                         "Index out of bounds: {} is greater than the array size {}",
                         index,
-                        arr.elements.lock().unwrap().len()
+                        elems.len()
                     );
                 }
             } else {
@@ -1604,7 +1712,8 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
         else {
             panic!("Assignment target is not an object or an array");
         }
-    } else {
+    }
+    else {
         panic!("Invalid LHS in assignment: {:?}", assignment.assigne);
     }
 }
@@ -1615,13 +1724,16 @@ pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, )
     let var_declaration = declaration
         .downcast::<VariableDeclaration>()
         .expect("Expected a VariableDeclaration node");
+
+    let declared_type = var_declaration.r#type.clone();
+
     let value = match var_declaration.value {
         Some(expr) => evaluate(expr, env),
         None => mk_null(),
     };
-    env.declare_var(var_declaration.identifier, value.clone())
-}
 
+    env.set_var(var_declaration.name.clone(), value.clone(), declared_type)
+}
 pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
     let member = ast_node.downcast::<MemberExpr>()
         .expect("Expected a MemberExpr node");
@@ -1641,7 +1753,7 @@ pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
         }
     } else if let Some(arr) = object_val.as_any().downcast_ref::<ArrayVal>() {
         let index_val = evaluate(member.property, env);
-        if let Some(num) = index_val.as_any().downcast_ref::<NumberVal>() {
+        if let Some(num) = index_val.as_any().downcast_ref::<IntegerVal>() {
             let index = num.value as usize;
             if index < arr.elements.lock().unwrap().len() {
                 arr.elements.lock().unwrap()[index].clone()
@@ -1664,8 +1776,8 @@ pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
     let rhs = evaluate(binary_expr.right, env);
 
     if let (Some(lhs_num), Some(rhs_num)) = (
-        lhs.as_any().downcast_ref::<NumberVal>(),
-        rhs.as_any().downcast_ref::<NumberVal>()
+        lhs.as_any().downcast_ref::<IntegerVal>(),
+        rhs.as_any().downcast_ref::<IntegerVal>()
     ) {
         return eval_numeric_binary_expr(
             lhs_num,
@@ -1675,31 +1787,31 @@ pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
     }
 
     Box::from(NullVal {
-        r#type: Null,
+        r#type: Some(Null),
     })
 }
-pub fn eval_numeric_binary_expr(lhs: &NumberVal, rhs: &NumberVal, operator: &str, ) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_numeric_binary_expr(lhs: &IntegerVal, rhs: &IntegerVal, operator: &str, ) -> Box<dyn RuntimeVal + Send + Sync> {
     let lhs_value = lhs.value;
     let rhs_value = rhs.value;
 
     match operator {
-        "+" => Box::from(NumberVal { r#type: Number, value: lhs_value + rhs_value }),
-        "-" => Box::from(NumberVal { r#type: Number, value: lhs_value - rhs_value }),
-        "*" => Box::from(NumberVal { r#type: Number, value: lhs_value * rhs_value }),
+        "+" => Box::from(IntegerVal { r#type: Option::from(Integer), value: lhs_value + rhs_value }),
+        "-" => Box::from(IntegerVal { r#type: Option::from(Integer), value: lhs_value - rhs_value }),
+        "*" => Box::from(IntegerVal { r#type: Option::from(Integer), value: lhs_value * rhs_value }),
         "/" => {
             if rhs_value == 0.0 {
                 panic!("Division par zéro interdite");
             }
-            Box::from(NumberVal { r#type: Number, value: lhs_value / rhs_value })
+            Box::from(IntegerVal { r#type: Option::from(Integer), value: lhs_value / rhs_value })
         },
-        "%" => Box::from(NumberVal { r#type: Number, value: lhs_value % rhs_value }),
+        "%" => Box::from(IntegerVal { r#type: Option::from(Integer), value: lhs_value % rhs_value }),
 
-        ">"  => Box::from(BooleanVal { r#type: Boolean, value: lhs_value  > rhs_value }),
-        "<"  => Box::from(BooleanVal { r#type: Boolean, value: lhs_value  < rhs_value }),
-        ">=" => Box::from(BooleanVal { r#type: Boolean, value: lhs_value >= rhs_value }),
-        "<=" => Box::from(BooleanVal { r#type: Boolean, value: lhs_value <= rhs_value }),
-        "!=" => Box::from(BooleanVal { r#type: Boolean, value: lhs_value != rhs_value }),
-        "=="  => Box::from(BooleanVal { r#type: Boolean, value: lhs_value == rhs_value }),
+        ">"  => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value  > rhs_value }),
+        "<"  => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value  < rhs_value }),
+        ">=" => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value >= rhs_value }),
+        "<=" => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value <= rhs_value }),
+        "!=" => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value != rhs_value }),
+        "=="  => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value == rhs_value }),
 
         _ => panic!("Unknown binary operator: {}", operator),
     }
@@ -1750,7 +1862,7 @@ pub fn eval_object_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
     }
 
     Box::from(ObjectVal {
-        r#type: ValueType::Object,
+        r#type: Option::from(Object),
         properties: Arc::new(Mutex::new(props)),
     })
 }
@@ -1783,16 +1895,16 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
                 args.len()
             );
         }
-        
+
         for (param, arg_val) in func.parameters.iter().zip(args.into_iter()) {
-            scope.declare_var(param.clone(), arg_val);
+            scope.set_var(param.clone(), arg_val, Option::from(ValueType::Null));
         }
 
         let mut result: Box<dyn RuntimeVal + Send + Sync> = mk_null();
         for stmt in func.body.iter() {
             result = evaluate(stmt.clone(), &mut scope);
         }
-        
+
         return result;
     }
 
@@ -1806,7 +1918,7 @@ pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &mut Environment) -> 
         .expect("Expected FunctionDeclaration");
 
     let function = FunctionVal{
-        value_type: ValueType::Function,
+        r#type: Option::from(Function),
         parameters: func.parameters,
         name: func.name.clone(),
         body: Arc::new(func.body),
@@ -1815,36 +1927,36 @@ pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &mut Environment) -> 
 
     //let decl_env : &mut Environment = unsafe {&mut *function_val.declaration_env} ;
 
-    env.declare_var(func.name, Box::from(function))
+    env.set_var(func.name, Box::from(function), Option::from(Function))
 }
 
 
-pub fn mk_number<T: Into<f64>>(number: T) -> Box<NumberVal> {
-    Box::from(NumberVal {
-        r#type: Number,
+pub fn mk_number<T: Into<f64>>(number: T) -> Box<IntegerVal> {
+    Box::from(IntegerVal {
+        r#type: Option::from(Integer),
         value: number.into(),
     })
 }
 
 
 pub fn mk_null() -> Box<NullVal> {
-    Box::from(NullVal{ r#type: Null})
+    Box::from(NullVal{ r#type: Option::from(Null) })
 }
 
 pub fn mk_bool(b: bool) -> Box<BooleanVal> {
-    Box::from(BooleanVal{ r#type: Boolean, value: b })
+    Box::from(BooleanVal{ r#type: Option::from(Boolean), value: b })
 }
 
 pub fn mk_native_fn(call: FunctionCall) -> Box<NativeFnValue> {
     Box::from(NativeFnValue{
-        value_type: NativeFn,
+        r#type: Option::from(NativeFn),
         call
     })
 }
 
 pub fn _mk_array(elements: Vec<Box<dyn RuntimeVal + Send + Sync>>) -> Box<ArrayVal> {
     Box::from(ArrayVal {
-        r#type: ValueType::Array,
+        r#type: Option::from(Array),
         elements: Arc::new(Mutex::new(elements.into())),
     })
 }
@@ -1856,12 +1968,11 @@ pub fn native_fs_read(args: Vec<Box<dyn RuntimeVal + Send + Sync>>, _env: &mut E
     let content = fs::read_to_string(&path)
         .expect("Erreur lecture fichier");
     Box::new(StringVal {
-        r#type: ValueType::String,
+        r#type: Some(ValueType::String),
         kind: NodeType::StringLiteral,
         value: content,
     })
 }
-
 
 macro_rules! register_natives {
     ( $($name:expr => $func:path),* $(,)? ) => {
@@ -1883,25 +1994,23 @@ register_natives!(
 pub fn make_global_env() -> Environment {
     let mut env = Environment::new(None);
 
-    env.declare_var(
+    env.set_var("null".to_string(), mk_null(), Option::from(Null));
+    env.set_var("true".to_string(), mk_bool(true), Option::from(Boolean));
+    env.set_var("false".to_string(), mk_bool(false), Option::from(Boolean));
+
+    env.set_var(
         "time".to_string(),
         mk_native_fn(Arc::new(|_args: Vec<Box<dyn RuntimeVal + Send + Sync>>, _scope: &mut Environment| {
             mk_number(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as f64 / 1000.0)
-        })),
+        })), Option::from(NativeFn),
     );
-
-    env.declare_var(
-        "sleep".to_string(),
-        mk_native_fn(Arc::new(move |_args, _| {
-            mk_null()
-        })),
-    );
-
+    
     let registry = native_registry();
     for (name, func) in registry {
-        env.declare_var(
+        env.set_var(
             name.to_string(),
-            mk_native_fn(func.clone())
+            mk_native_fn(func.clone()),
+            Option::from(NativeFn)
         );
     }
     env
@@ -1911,14 +2020,14 @@ pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Ve
     let output = Arc::new(Mutex::new(Vec::<String>::new()));
     let output_for_native = output.clone();
 
-    env.declare_var(
+    env.set_var(
         "log".to_string(),
         mk_native_fn(Arc::new(move |args, _| {
             let mut guard = output_for_native.lock().unwrap();
             for arg in args {
                 if let Some(s) = arg.as_any().downcast_ref::<StringVal>() {
                     guard.push(s.value.clone());
-                } else if let Some(n) = arg.as_any().downcast_ref::<NumberVal>() {
+                } else if let Some(n) = arg.as_any().downcast_ref::<IntegerVal>() {
                     guard.push(n.value.to_string());
                 } else if let Some(b) = arg.as_any().downcast_ref::<BooleanVal>() {
                     guard.push(b.value.to_string());
@@ -1927,7 +2036,7 @@ pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Ve
                     for element in array_val.elements.lock().unwrap().iter() {
                         let s = if let Some(string_val) = element.as_any().downcast_ref::<StringVal>() {
                             string_val.value.clone()
-                        } else if let Some(num_val) = element.as_any().downcast_ref::<NumberVal>() {
+                        } else if let Some(num_val) = element.as_any().downcast_ref::<IntegerVal>() {
                             num_val.value.to_string()
                         } else if let Some(bool_val) = element.as_any().downcast_ref::<BooleanVal>() {
                             bool_val.value.to_string()
@@ -1953,6 +2062,7 @@ pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Ve
             }
             mk_null()
         })),
+        Option::from(NativeFn)
     );
 
     let tokens = tokenize(input);
@@ -1964,15 +2074,120 @@ pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Ve
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, io};
-    use std::io::Write;
-    use crate::{evaluate, make_global_env, tokenize, Parser};
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::Duration;
+    use crate::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, NullVal, IntegerVal, Parser, StringVal};
+    use crate::ValueType::{NativeFn};
 
     #[test]
     fn main() {
         let mut env = make_global_env();
-        
-        loop {
+        let output = Arc::new(Mutex::new(Vec::<String>::new()));
+        let output_for_native = output.clone();
+
+        env.set_var(
+            "log".to_string(),
+            mk_native_fn(Arc::new(move |args, _| {
+                let mut guard = output_for_native.lock().unwrap();
+                for arg in args {
+                    if let Some(s) = arg.as_any().downcast_ref::<StringVal>() {
+                        guard.push(s.value.clone());
+                    } else if let Some(n) = arg.as_any().downcast_ref::<IntegerVal>() {
+                        guard.push(n.value.to_string());
+                    } else if let Some(b) = arg.as_any().downcast_ref::<BooleanVal>() {
+                        guard.push(b.value.to_string());
+                    }else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
+                        let mut out = String::new();
+                        for element in array_val.elements.lock().unwrap().iter() {
+                            let s = if let Some(string_val) = element.as_any().downcast_ref::<StringVal>() {
+                                string_val.value.clone()
+                            } else if let Some(num_val) = element.as_any().downcast_ref::<IntegerVal>() {
+                                num_val.value.to_string()
+                            } else if let Some(bool_val) = element.as_any().downcast_ref::<BooleanVal>() {
+                                bool_val.value.to_string()
+                            } else if let Some(_array_val) = element.as_any().downcast_ref::<ArrayVal>() {
+                                "ARRAY INSIDE ARRAY NOT IMPLEMENTED YET".to_string()
+                            } else if let Some(_) = element.as_any().downcast_ref::<NullVal>() {
+                                "null".to_string()
+                            } else {
+                                String::new()
+                            };
+
+                            if !out.is_empty() {
+                                out.push(',');
+                            }
+                            out.push_str(&s);
+                        }
+                        guard.push(out);
+                    } else if arg.as_any().downcast_ref::<NullVal>().is_some() {
+                        guard.push("null".to_string());
+                    } else {
+                        guard.push(format!("{:?}", arg));
+                    }
+                }
+                mk_null()
+            })),
+            Option::from(NativeFn)
+        );
+
+        env.set_var(
+            "sleep".to_string(),
+            mk_native_fn(Arc::new(move |args, _| {
+
+                let secs = args.get(0)
+                    .expect("sleep: un argument attendu")
+                    .as_any()
+                    .downcast_ref::<IntegerVal>()
+                    .expect("sleep: l’argument doit être un nombre")
+                    .value;
+
+                thread::sleep(Duration::from_secs_f64(secs));
+                mk_null()
+            })),
+            Option::from(NativeFn)
+        );
+
+
+        //let input = fs::read_to_string("code.nwtz").unwrap();
+
+        let input = r#"
+
+a : String = "JE SUIS UN STR";
+a : Boolean = true;
+log(a);
+
+b: Boolean = true;
+b = false;
+log(b);
+
+c: Array = [54, "HELLO"];
+log(c);
+
+obj truc {
+    age: "544654654654",
+    name: String
+};
+
+truc.name = 123;
+
+log(truc.name);
+
+"#.to_string();
+
+        let tokens = tokenize(input);
+        let mut parser = Parser::new(tokens);
+        let ast = parser.produce_ast();
+        //println!("AST{:#?}\n\n", ast);
+        let _ = evaluate(Box::new(ast), &mut env);
+        println!("EVALUATED {:#?}", output.lock().unwrap().clone())
+
+
+    }
+}
+
+/*
+loop {
 
             print!("> ");
             io::stdout().flush().unwrap();
@@ -2000,5 +2215,7 @@ mod tests {
             let _res = evaluate(Box::new(program), &mut env);
             //println!("{:#?}", res);
         }
-    }
-}
+ */
+
+
+// Passer Option ValueType aux StringVal etc
