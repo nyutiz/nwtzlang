@@ -1584,7 +1584,7 @@ pub fn eval_for_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box
                 .as_any()
                 .downcast_ref::<BooleanVal>()
                 .map(|b| b.value)
-                .unwrap_or_else(|| panic!("Condition du for n'est pas un booléen"));
+                .unwrap_or_else(|| panic!("Condition not Boolean"));
             if !keep_going {
                 break;
             }
@@ -2031,7 +2031,9 @@ pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Ve
                     guard.push(n.value.to_string());
                 } else if let Some(b) = arg.as_any().downcast_ref::<BooleanVal>() {
                     guard.push(b.value.to_string());
-                }else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
+                } else if let Some(f) = arg.as_any().downcast_ref::<FunctionVal>() {
+                    guard.push(format!("{:?}", f.body));
+                } else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
                     let mut out = String::new();
                     for element in array_val.elements.lock().unwrap().iter() {
                         let s = if let Some(string_val) = element.as_any().downcast_ref::<StringVal>() {
@@ -2077,7 +2079,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::Duration;
-    use crate::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, NullVal, IntegerVal, Parser, StringVal};
+    use crate::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, NullVal, IntegerVal, Parser, StringVal, FunctionVal};
     use crate::ValueType::{NativeFn};
 
     #[test]
@@ -2097,7 +2099,9 @@ mod tests {
                         guard.push(n.value.to_string());
                     } else if let Some(b) = arg.as_any().downcast_ref::<BooleanVal>() {
                         guard.push(b.value.to_string());
-                    }else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
+                    } else if let Some(f) = arg.as_any().downcast_ref::<FunctionVal>() {
+                        guard.push(format!("{:?}", f.body));
+                    } else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
                         let mut out = String::new();
                         for element in array_val.elements.lock().unwrap().iter() {
                             let s = if let Some(string_val) = element.as_any().downcast_ref::<StringVal>() {
@@ -2181,12 +2185,14 @@ fn test (a){
 
 test(1.54654654654 * 2);
 
+log(test);
+
 "#.to_string();
 
         let tokens = tokenize(input);
         let mut parser = Parser::new(tokens);
         let ast = parser.produce_ast();
-        //println!("AST{:#?}\n\n", ast);
+        println!("AST{:#?}\n\n", ast);
         let _ = evaluate(Box::new(ast), &mut env);
         println!("EVALUATED {:#?}", output.lock().unwrap().clone())
 
