@@ -1897,7 +1897,7 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
         }
 
         for (param, arg_val) in func.parameters.iter().zip(args.into_iter()) {
-            scope.set_var(param.clone(), arg_val, Option::from(ValueType::Null));
+            scope.set_var(param.clone(), arg_val, None);
         }
 
         let mut result: Box<dyn RuntimeVal + Send + Sync> = mk_null();
@@ -2161,17 +2161,25 @@ b: Boolean = true;
 b = false;
 log(b);
 
-c: Array = [54, "HELLO"];
+c: Array = [54, "HEAAAAAAAAALLO"];
 log(c);
 
 obj truc {
     age: "544654654654",
-    name: String
+    name: String,
+    c: c,
 };
+log(truc.c);
 
-truc.name = 123;
+truc.c = "3ADHAJF";
 
-log(truc.name);
+log(truc.c);
+
+fn test (a){
+    log(a);
+}
+
+test(1.54654654654 * 2);
 
 "#.to_string();
 

@@ -15,9 +15,9 @@ ValueType définis explicitement par : +
 Commentaires // +
 
 
-While -
+Ajouter un type dans les Fonctions fn(a:Integer){} -
+Fonction Native getType pour comparer dans des conditions -
 Impl d'objets -
-Boucles For, While -
+Boucle While -
 Comparaisons Or, And -
-
-Utilisation de New (pas utile, les objets se définissent seuls)
+Exposants ^ ou ** -

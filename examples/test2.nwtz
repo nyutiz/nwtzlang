@@ -48,9 +48,9 @@ log(c);
 
 obj truc {
     age: "544654654654",
-    name: String
+    name: String,
+    c: c,
 };
 
-truc.name = 123;
 
-log(truc.name);
+log(truc.c);
