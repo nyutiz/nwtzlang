@@ -2,13 +2,14 @@ use std::any::Any;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
-use std::{fs};
+use std::{fs,};
 use logos::{Logos};
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use crate::NodeType::Identifier;
 use crate::Token::{LBrace, RBrace, Semicolon};
 use crate::ValueType::{Boolean, NativeFn, Null, Integer, Object, Function, Array};
@@ -2025,42 +2026,7 @@ pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Ve
         mk_native_fn(Arc::new(move |args, _| {
             let mut guard = output_for_native.lock().unwrap();
             for arg in args {
-                if let Some(s) = arg.as_any().downcast_ref::<StringVal>() {
-                    guard.push(s.value.clone());
-                } else if let Some(n) = arg.as_any().downcast_ref::<IntegerVal>() {
-                    guard.push(n.value.to_string());
-                } else if let Some(b) = arg.as_any().downcast_ref::<BooleanVal>() {
-                    guard.push(b.value.to_string());
-                } else if let Some(f) = arg.as_any().downcast_ref::<FunctionVal>() {
-                    guard.push(format!("{:?}", f.body));
-                } else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
-                    let mut out = String::new();
-                    for element in array_val.elements.lock().unwrap().iter() {
-                        let s = if let Some(string_val) = element.as_any().downcast_ref::<StringVal>() {
-                            string_val.value.clone()
-                        } else if let Some(num_val) = element.as_any().downcast_ref::<IntegerVal>() {
-                            num_val.value.to_string()
-                        } else if let Some(bool_val) = element.as_any().downcast_ref::<BooleanVal>() {
-                            bool_val.value.to_string()
-                        } else if let Some(_array_val) = element.as_any().downcast_ref::<ArrayVal>() {
-                            "ARRAY INSIDE ARRAY NOT IMPLEMENTED YET".to_string()
-                        } else if let Some(_) = element.as_any().downcast_ref::<NullVal>() {
-                            "null".to_string()
-                        } else {
-                            String::new()
-                        };
-
-                        if !out.is_empty() {
-                            out.push(',');
-                        }
-                        out.push_str(&s);
-                    }
-                    guard.push(out);
-                } else if arg.as_any().downcast_ref::<NullVal>().is_some() {
-                    guard.push("null".to_string());
-                } else {
-                    guard.push(format!("{:?}", arg));
-                }
+                guard.push(match_arg_to_string(&*arg));
             }
             mk_null()
         })),
@@ -2074,12 +2040,65 @@ pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Ve
     output.lock().unwrap().clone()
 }
 
+pub fn interpreter_to_stream(env: &mut Environment, input: String, ) -> UnboundedReceiver<String> {
+    let (tx, rx): (UnboundedSender<String>, UnboundedReceiver<String>) = unbounded_channel();
+
+    let tx_for_native = tx.clone();
+    env.set_var(
+        "log".to_string(),
+        mk_native_fn(Arc::new(move |args, _| {
+            for arg in args {
+                let s = match_arg_to_string(&*arg);
+                let _ = tx_for_native.send(s);
+            }
+            mk_null()
+        })),
+        Some(NativeFn),
+    );
+
+    let tokens = tokenize(input);
+    let mut parser = Parser::new(tokens);
+    let ast = parser.produce_ast();
+
+    let mut env_for_task = env.clone();
+    tokio::spawn(async move {
+        let _ = evaluate(Box::new(ast), &mut env_for_task);
+        drop(tx);
+    });
+
+    rx
+}
+
+fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
+    if let Some(sv) = arg.as_any().downcast_ref::<StringVal>() {
+        sv.value.clone()
+    } else if let Some(iv) = arg.as_any().downcast_ref::<IntegerVal>() {
+        iv.value.to_string()
+    } else if let Some(bv) = arg.as_any().downcast_ref::<BooleanVal>() {
+        bv.value.to_string()
+    } else if let Some(av) = arg.as_any().downcast_ref::<ArrayVal>() {
+        av.elements
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|e| match_arg_to_string(e.as_ref()))
+            .collect::<Vec<_>>()
+            .join(",")
+    } else if let Some(f) = arg.as_any().downcast_ref::<FunctionVal>() {
+        format!("{:?}", f.body)
+    } else if arg.as_any().downcast_ref::<NullVal>().is_some() {
+        "null".into()
+    } else {
+        format!("{:?}", arg)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::Duration;
-    use crate::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, ArrayVal, BooleanVal, NullVal, IntegerVal, Parser, StringVal, FunctionVal};
+    use crate::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, IntegerVal, Parser, match_arg_to_string};
     use crate::ValueType::{NativeFn};
 
     #[test]
@@ -2093,42 +2112,7 @@ mod tests {
             mk_native_fn(Arc::new(move |args, _| {
                 let mut guard = output_for_native.lock().unwrap();
                 for arg in args {
-                    if let Some(s) = arg.as_any().downcast_ref::<StringVal>() {
-                        guard.push(s.value.clone());
-                    } else if let Some(n) = arg.as_any().downcast_ref::<IntegerVal>() {
-                        guard.push(n.value.to_string());
-                    } else if let Some(b) = arg.as_any().downcast_ref::<BooleanVal>() {
-                        guard.push(b.value.to_string());
-                    } else if let Some(f) = arg.as_any().downcast_ref::<FunctionVal>() {
-                        guard.push(format!("{:?}", f.body));
-                    } else if let Some(array_val) = arg.as_any().downcast_ref::<ArrayVal>() {
-                        let mut out = String::new();
-                        for element in array_val.elements.lock().unwrap().iter() {
-                            let s = if let Some(string_val) = element.as_any().downcast_ref::<StringVal>() {
-                                string_val.value.clone()
-                            } else if let Some(num_val) = element.as_any().downcast_ref::<IntegerVal>() {
-                                num_val.value.to_string()
-                            } else if let Some(bool_val) = element.as_any().downcast_ref::<BooleanVal>() {
-                                bool_val.value.to_string()
-                            } else if let Some(_array_val) = element.as_any().downcast_ref::<ArrayVal>() {
-                                "ARRAY INSIDE ARRAY NOT IMPLEMENTED YET".to_string()
-                            } else if let Some(_) = element.as_any().downcast_ref::<NullVal>() {
-                                "null".to_string()
-                            } else {
-                                String::new()
-                            };
-
-                            if !out.is_empty() {
-                                out.push(',');
-                            }
-                            out.push_str(&s);
-                        }
-                        guard.push(out);
-                    } else if arg.as_any().downcast_ref::<NullVal>().is_some() {
-                        guard.push("null".to_string());
-                    } else {
-                        guard.push(format!("{:?}", arg));
-                    }
+                    guard.push(match_arg_to_string(&*arg));
                 }
                 mk_null()
             })),
