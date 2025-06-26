@@ -12,3 +12,34 @@ if Test < 24 {
 
 secret = _fs_read("test.nwtz");
 log(secret);
+
+
+a : String = "JE SUIS UN STR";
+a : Boolean = true;
+log(a);
+
+b: Boolean = true;
+b = false;
+log(b);
+
+c: Array = [54, "HEAAAAAAAAALLO"];
+log(c);
+
+obj truc {
+    age: "544654654654",
+    name: String,
+    c: c,
+};
+log(truc.c);
+
+truc.c = "3ADHAJF";
+
+log(truc.c);
+
+fn test (a){
+    log(a);
+}
+
+test(1.54654654654 * 2);
+
+log(test);

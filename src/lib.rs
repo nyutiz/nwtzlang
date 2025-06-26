@@ -2,7 +2,7 @@ use std::any::Any;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
-use std::{fs,};
+use std::{fs, thread};
 use logos::{Logos};
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
@@ -2069,7 +2069,7 @@ pub fn interpreter_to_stream(env: &mut Environment, input: String, ) -> Unbounde
     rx
 }
 
-fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
+pub fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
     if let Some(sv) = arg.as_any().downcast_ref::<StringVal>() {
         sv.value.clone()
     } else if let Some(iv) = arg.as_any().downcast_ref::<IntegerVal>() {
@@ -2093,6 +2093,15 @@ fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
     }
 }
 
+pub fn drive_stream(mut rx: UnboundedReceiver<String>) {
+    thread::spawn(move || {
+        while let Some(msg) = rx.blocking_recv() {
+            println!("{}", msg);
+        }
+    });
+}
+
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
@@ -2105,14 +2114,16 @@ mod tests {
     fn main() {
         let mut env = make_global_env();
         let output = Arc::new(Mutex::new(Vec::<String>::new()));
-        let output_for_native = output.clone();
+        //let output_for_native = output.clone();
+        println!("adfa");
 
         env.set_var(
             "log".to_string(),
             mk_native_fn(Arc::new(move |args, _| {
-                let mut guard = output_for_native.lock().unwrap();
+                //let mut _guard = output_for_native.lock().unwrap();
                 for arg in args {
-                    guard.push(match_arg_to_string(&*arg));
+                    //guard.push(match_arg_to_string(&*arg));
+                    println!("{}", match_arg_to_string(&*arg));
                 }
                 mk_null()
             })),
@@ -2122,13 +2133,14 @@ mod tests {
         env.set_var(
             "sleep".to_string(),
             mk_native_fn(Arc::new(move |args, _| {
-
                 let secs = args.get(0)
                     .expect("sleep: un argument attendu")
                     .as_any()
                     .downcast_ref::<IntegerVal>()
                     .expect("sleep: l’argument doit être un nombre")
                     .value;
+
+                //tokio::time::sleep(Duration::from_secs_f64(secs));
 
                 thread::sleep(Duration::from_secs_f64(secs));
                 mk_null()
@@ -2141,42 +2153,21 @@ mod tests {
 
         let input = r#"
 
-a : String = "JE SUIS UN STR";
-a : Boolean = true;
-log(a);
+log("Hello");
+sleep(5);
+log("world");
 
-b: Boolean = true;
-b = false;
-log(b);
-
-c: Array = [54, "HEAAAAAAAAALLO"];
-log(c);
-
-obj truc {
-    age: "544654654654",
-    name: String,
-    c: c,
-};
-log(truc.c);
-
-truc.c = "3ADHAJF";
-
-log(truc.c);
-
-fn test (a){
-    log(a);
+for (i = 0; i < 3; i = i+1;){
+    log(i);
+    sleep(1);
 }
-
-test(1.54654654654 * 2);
-
-log(test);
 
 "#.to_string();
 
         let tokens = tokenize(input);
         let mut parser = Parser::new(tokens);
         let ast = parser.produce_ast();
-        println!("AST{:#?}\n\n", ast);
+        //println!("AST{:#?}\n\n", ast);
         let _ = evaluate(Box::new(ast), &mut env);
         println!("EVALUATED {:#?}", output.lock().unwrap().clone())
 
@@ -2216,4 +2207,3 @@ loop {
  */
 
 
-// Passer Option ValueType aux StringVal etc
