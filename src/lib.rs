@@ -127,6 +127,8 @@ pub enum Token {
     Percent,
     #[token("=")]
     Equal,
+    #[token("==")]
+    EqualEqual,
     #[token(";")]
     Semicolon,
     #[token(":")]
@@ -992,18 +994,34 @@ impl Parser {
         };
 
         let operator = match self.eat() {
-            Token::Equal   => "=",
+            Token::EqualEqual => "==",
             Token::Greater => ">",
             Token::Lower   => "<",
-            _ => panic!("Opérateur attendu (=, > ou <)"),
+            _ => {
+                panic!("Opérateur attendu (==, > ou <)")
+            },
         }.to_string();
+
+        //println!("{}", operator);
 
         let right_expr: Box<dyn Stmt> = match self.eat() {
             Token::Identifier(name) =>
-                Box::new(IdentifierExpr { kind: Identifier, name }),
+                Box::new(IdentifierExpr { 
+                    kind: Identifier, 
+                    name 
+                }),
             Token::Integer(n) =>
-                Box::new(LiteralExpr    { kind: NodeType::NumericLiteral, value: n as f64 }),
-            _ => panic!("Variable ou entier attendu après l’opérateur"),
+                Box::new(LiteralExpr { 
+                    kind: NodeType::NumericLiteral, 
+                    value: n as f64 
+                }),
+            Token::StringLiteral(s) =>
+                Box::new(StringVal {
+                    r#type: None,
+                    kind: NodeType::StringLiteral,
+                    value: s,
+                }),
+            e => panic!("Variable ou entier attendu après l’opérateur, {:?}", e),
         };
 
         let condition = Box::new(BinaryExpr {
@@ -2165,6 +2183,13 @@ for (i = 0; i < 100; i = i+1;){
     sleep(0.01);
 }
 
+a = 5;
+
+if a == 5 {
+    log("World");
+} else {
+    log("?");
+}
 
 "#.to_string();
 
