@@ -1955,6 +1955,14 @@ pub fn mk_native_fn(call: FunctionCall) -> Box<NativeFnValue> {
     })
 }
 
+pub fn mk_string(value: String) -> Box<StringVal> {
+    Box::from(StringVal{
+        r#type: Option::from(ValueType::String),
+        kind: NodeType::StringLiteral,
+        value,
+    })
+}
+
 pub fn _mk_array(elements: Vec<Box<dyn RuntimeVal + Send + Sync>>) -> Box<ArrayVal> {
     Box::from(ArrayVal {
         r#type: Option::from(Array),
