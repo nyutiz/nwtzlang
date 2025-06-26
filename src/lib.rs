@@ -2104,8 +2104,7 @@ pub fn drive_stream(mut rx: UnboundedReceiver<String>) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-    use std::thread;
+    use std::sync::{Arc};
     use std::time::Duration;
     use crate::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, IntegerVal, Parser, match_arg_to_string};
     use crate::ValueType::{NativeFn};
@@ -2113,9 +2112,8 @@ mod tests {
     #[test]
     fn main() {
         let mut env = make_global_env();
-        let output = Arc::new(Mutex::new(Vec::<String>::new()));
+        //let output = Arc::new(Mutex::new(Vec::<String>::new()));
         //let output_for_native = output.clone();
-        println!("adfa");
 
         env.set_var(
             "log".to_string(),
@@ -2137,30 +2135,28 @@ mod tests {
                     .expect("sleep: un argument attendu")
                     .as_any()
                     .downcast_ref::<IntegerVal>()
-                    .expect("sleep: l’argument doit être un nombre")
+                    .expect("sleep: l'argument doit être un nombre")
                     .value;
 
-                //tokio::time::sleep(Duration::from_secs_f64(secs));
-
-                thread::sleep(Duration::from_secs_f64(secs));
+                std::thread::sleep(Duration::from_secs_f64(secs));
                 mk_null()
             })),
             Option::from(NativeFn)
         );
-
-
+        
         //let input = fs::read_to_string("code.nwtz").unwrap();
 
         let input = r#"
 
 log("Hello");
-sleep(5);
+sleep(1);
 log("world");
 
-for (i = 0; i < 3; i = i+1;){
+for (i = 0; i < 100; i = i+1;){
     log(i);
-    sleep(1);
+    sleep(0.01);
 }
+
 
 "#.to_string();
 
@@ -2169,7 +2165,7 @@ for (i = 0; i < 3; i = i+1;){
         let ast = parser.produce_ast();
         //println!("AST{:#?}\n\n", ast);
         let _ = evaluate(Box::new(ast), &mut env);
-        println!("EVALUATED {:#?}", output.lock().unwrap().clone())
+        //println!("EVALUATED {:#?}", output.lock().unwrap().clone())
 
 
     }
