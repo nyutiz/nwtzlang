@@ -30,3 +30,8 @@ monTableau[1] = test;
 log(monTableau[1]);
 log(monTableau);
 
+input1: String = input();
+log("Hello ", input1);
+
+input2: String = input();
+log("Wsh ", input2);

@@ -54,3 +54,27 @@ obj truc {
 
 
 log(truc.c);
+
+obj truc {
+    truc: "AAA",
+    fn hey(a){
+        log(a);
+    },
+};
+
+fn get(){
+    time()
+}
+
+truc.hey("aaaa");
+
+log(system.config);
+gz = [10, 56, true, "AFAZF"];
+
+log(gz[2]);
+
+log(get());
+
+//system.log(system.config);
+truc.hey("a");
+log( system.getValueType( truc.hey ) );

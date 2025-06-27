@@ -13,12 +13,12 @@ Closures +
 For +
 ValueType définis explicitement par : +
 Commentaires // +
+Impl d'objets +
+Meilleur Log log("Salut ", name) +
+String condition if "a" == "b" +
 
-
-Ajouter un type dans les Fonctions fn(a:Integer){} -
-Fonction Native getType pour comparer dans des conditions -
-Impl d'objets -
+Fonction Native getValueType pour comparer dans des conditions -
 Boucle While -
 Comparaisons Or, And -
 Exposants ^ ou ** -
-Meilleur Log -
+Ajouter un type dans les Fonctions fn(a:Integer){} -

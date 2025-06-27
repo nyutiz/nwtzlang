@@ -2,11 +2,11 @@ use std::any::Any;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
-use std::{fs, thread};
+use std::{env, fs, io, thread};
 use logos::{Logos};
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime};
+use std::time::{Duration, SystemTime};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -929,6 +929,12 @@ impl Parser {
                     Box::new(IdentifierExpr { kind: Identifier, name }),
                 Token::Integer(n) =>
                     Box::new(LiteralExpr    { kind: NodeType::NumericLiteral, value: n as f64 }),
+                Token::StringLiteral(s) =>
+                    Box::new(StringVal{
+                        r#type: None,
+                        kind: NodeType::StringLiteral,
+                        value: s,
+                    }),
                 t => panic!("Expr. attendue en condition, pas {:?}", t),
             };
 
@@ -944,6 +950,12 @@ impl Parser {
                     Box::new(IdentifierExpr { kind: Identifier, name }),
                 Token::Integer(n) =>
                     Box::new(LiteralExpr { kind: NodeType::NumericLiteral, value: n as f64 }),
+                Token::StringLiteral(s) =>
+                    Box::new(StringVal{
+                        r#type: None,
+                        kind: NodeType::StringLiteral,
+                        value: s,
+                    }),
                 t => panic!("Expr. attendue après opérateur, pas {:?}", t),
             };
 
@@ -990,6 +1002,12 @@ impl Parser {
                 Box::new(IdentifierExpr { kind: Identifier, name }),
             Token::Integer(n) =>
                 Box::new(LiteralExpr { kind: NodeType::NumericLiteral, value: n as f64 }),
+            Token::StringLiteral(s) =>
+                Box::new(StringVal {
+                    r#type: None,
+                    kind: NodeType::StringLiteral,
+                    value: s,
+                }),
             t => panic!("Variable ou entier attendu après `if` pas {:?}", t),
         };
 
@@ -1107,20 +1125,30 @@ impl Parser {
         let mut properties: Vec<Property> = Vec::new();
 
         while self.not_eof() && *self.at() != RBrace {
-            let key = if let Token::Identifier(key) = self.eat() {
-                key
-            } else {
-                panic!("Expected property key in object literal");
-            };
+            if *self.at() == Token::Fn {
+                //self.eat();
 
-            self.expect(Token::Colon, "Expected ':' after property key");
-            let value = self.parse_expr();
+                let func = self.parse_func_declaration().downcast::<FunctionDeclaration>()
+                    .expect("Expected FunctionDeclaration");
 
-            properties.push(Property {
-                kind: NodeType::Property,
-                key,
-                value: Some(value),
-            });
+                properties.push(Property {
+                    kind: NodeType::Property,
+                    key: func.name.clone(),
+                    value: Some(func),
+                });
+            }
+            else if let Token::Identifier(key) = self.eat() {
+                self.expect(Token::Colon, "Expected ':' after property key");
+                let value = self.parse_expr();
+                properties.push(Property {
+                    kind: NodeType::Property,
+                    key,
+                    value: Some(value),
+                });
+            }
+            else {
+                panic!("Expected property key or 'fn' in object literal");
+            }
 
             if *self.at() == Token::Comma {
                 self.eat();
@@ -1383,7 +1411,6 @@ impl Parser {
             args.push(self.parse_assignment_expr());
         }
 
-
         args
     }
 
@@ -1628,12 +1655,14 @@ pub fn eval_for_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box
 pub fn eval_if_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
     let if_stmt = ast_node.as_any().downcast_ref::<IfStatement>()
         .expect("Expected an IfStatement node");
+    
+    println!("{:?}", if_stmt);
 
     let cond_val = evaluate(if_stmt.condition.clone(), env);
     let condition_is_true = if let Some(boolean) = cond_val.as_any().downcast_ref::<BooleanVal>() {
         boolean.value
     } else {
-        panic!("La condition du if n'est pas un booléen");
+        panic!("If condition is not a boolean : {:?}", cond_val);
     };
 
     if condition_is_true {
@@ -1794,13 +1823,16 @@ pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
     let lhs = evaluate(binary_expr.left, env);
     let rhs = evaluate(binary_expr.right, env);
 
-    if let (Some(lhs_num), Some(rhs_num)) = (
-        lhs.as_any().downcast_ref::<IntegerVal>(),
-        rhs.as_any().downcast_ref::<IntegerVal>()
-    ) {
+    if let (Some(lhs_num), Some(rhs_num)) = (lhs.as_any().downcast_ref::<IntegerVal>(), rhs.as_any().downcast_ref::<IntegerVal>()) {
         return eval_numeric_binary_expr(
             lhs_num,
             rhs_num,
+            &binary_expr.operator,
+        );
+    } else if let (Some(lhs_str), Some(rhs_str)) = (lhs.as_any().downcast_ref::<StringVal>(), rhs.as_any().downcast_ref::<StringVal>()) {
+        return eval_string_binary_expr(
+            lhs_str,
+            rhs_str,
             &binary_expr.operator,
         );
     }
@@ -1809,6 +1841,18 @@ pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
         r#type: Some(Null),
     })
 }
+
+pub fn eval_string_binary_expr(lhs: &StringVal, rhs: &StringVal, operator: &str, ) -> Box<dyn RuntimeVal + Send + Sync> {
+    let lhs_value = lhs.value.clone();
+    let rhs_value = rhs.value.clone();
+
+    match operator {
+        "=="  => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value.eq(&rhs_value)}),
+
+        _ => panic!("Unknown binary operator: {}", operator),
+    }
+}
+
 pub fn eval_numeric_binary_expr(lhs: &IntegerVal, rhs: &IntegerVal, operator: &str, ) -> Box<dyn RuntimeVal + Send + Sync> {
     let lhs_value = lhs.value;
     let rhs_value = rhs.value;
@@ -1981,7 +2025,7 @@ pub fn mk_string(value: String) -> Box<StringVal> {
     })
 }
 
-pub fn _mk_array(elements: Vec<Box<dyn RuntimeVal + Send + Sync>>) -> Box<ArrayVal> {
+pub fn mk_array(elements: Vec<Box<dyn RuntimeVal + Send + Sync>>) -> Box<ArrayVal> {
     Box::from(ArrayVal {
         r#type: Option::from(Array),
         elements: Arc::new(Mutex::new(elements.into())),
@@ -2017,31 +2061,6 @@ register_natives!(
     "_fs_read" => native_fs_read,
 );
 
-
-pub fn make_global_env() -> Environment {
-    let mut env = Environment::new(None);
-
-    env.set_var("null".to_string(), mk_null(), Option::from(Null));
-    env.set_var("true".to_string(), mk_bool(true), Option::from(Boolean));
-    env.set_var("false".to_string(), mk_bool(false), Option::from(Boolean));
-
-    env.set_var(
-        "time".to_string(),
-        mk_native_fn(Arc::new(|_args: Vec<Box<dyn RuntimeVal + Send + Sync>>, _scope: &mut Environment| {
-            mk_number(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as f64 / 1000.0)
-        })), Option::from(NativeFn),
-    );
-    
-    let registry = native_registry();
-    for (name, func) in registry {
-        env.set_var(
-            name.to_string(),
-            mk_native_fn(func.clone()),
-            Option::from(NativeFn)
-        );
-    }
-    env
-}
 
 pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Vec<String> {
     let output = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -2127,13 +2146,117 @@ pub fn drive_stream(mut rx: UnboundedReceiver<String>) {
     });
 }
 
+pub fn make_global_env() -> Environment {
+    let mut env = Environment::new(None);
+
+    env.set_var("null".to_string(), mk_null(), Option::from(Null));
+    env.set_var("true".to_string(), mk_bool(true), Option::from(Boolean));
+    env.set_var("false".to_string(), mk_bool(false), Option::from(Boolean));
+
+    env.set_var(
+        "time".to_string(),
+        mk_native_fn(Arc::new(|_args, _| {
+            mk_number(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as f64 / 1000.0)
+        })),
+        Option::from(NativeFn),
+    );
+
+    env.set_var(
+        "log".to_string(),
+        mk_native_fn(Arc::new(move |args, _| {
+            //let mut _guard = output_for_native.lock().unwrap();
+            let mut out = String::new();
+            for arg in args {
+                out.push_str(&*match_arg_to_string(&*arg));
+            }
+            println!("{}", out);
+            mk_null()
+        })),
+        Option::from(NativeFn)
+    );
+
+    env.set_var(
+        "sleep".to_string(),
+        mk_native_fn(Arc::new(move |args, _| {
+            let secs = args.get(0)
+                .expect("sleep: un argument attendu")
+                .as_any()
+                .downcast_ref::<IntegerVal>()
+                .expect("sleep: l'argument doit être un nombre")
+                .value;
+
+            thread::sleep(Duration::from_secs_f64(secs));
+            mk_null()
+        })),
+        Option::from(NativeFn)
+    );
+
+    env.set_var(
+        "input".to_string(),
+        mk_native_fn(Arc::new(move |_args, _| {
+            let mut out = String::new();
+            io::stdin().read_line(&mut out).expect("failed to readline");
+            mk_string(out.trim_end().to_string())
+        })),
+        Option::from(NativeFn)
+    );
+
+    env.set_var(
+        "system".to_string(),
+        Box::from(ObjectVal{
+            r#type: Option::from(Object),
+            properties: {
+                let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+
+                props.insert(
+                    "a".to_string(),
+                    mk_string("A A A A A".to_string()),
+                );
+
+                props.insert(
+                    "config".to_string(),
+                    {
+
+                        // pas la meilleure implementation, il faudrait sysinfo sauf que lib trop grandes
+
+                        let mut a:Vec<Box<dyn RuntimeVal + Send + Sync>> = Vec::new();
+
+                        for (key, value) in env::vars() {
+                            a.push(mk_string(format!("{}: {:#?}", key, value).to_string()));
+                        }
+
+                        mk_array(a)
+                    }
+                );
+
+                props.insert(
+                    "value_type".to_string(),
+                    mk_native_fn(Arc::new(|args, _scope| {
+                        mk_string(format!("{:?}", args[0].clone().value_type().unwrap()))
+                    })),
+                );
+
+                Arc::new(Mutex::new(props))
+            },
+        }),
+        Option::from(Object)
+    );
+
+    let registry = native_registry();
+    for (name, func) in registry {
+        env.set_var(
+            name.to_string(),
+            mk_native_fn(func.clone()),
+            Option::from(NativeFn)
+        );
+    }
+    env
+}
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc};
-    use std::time::Duration;
-    use crate::{evaluate, make_global_env, mk_native_fn, mk_null, tokenize, IntegerVal, Parser, match_arg_to_string};
-    use crate::ValueType::{NativeFn};
+
+    use crate::{evaluate, make_global_env, tokenize, Parser};
 
     #[test]
     fn main() {
@@ -2141,54 +2264,39 @@ mod tests {
         //let output = Arc::new(Mutex::new(Vec::<String>::new()));
         //let output_for_native = output.clone();
 
-        env.set_var(
-            "log".to_string(),
-            mk_native_fn(Arc::new(move |args, _| {
-                //let mut _guard = output_for_native.lock().unwrap();
-                for arg in args {
-                    //guard.push(match_arg_to_string(&*arg));
-                    println!("{}", match_arg_to_string(&*arg));
-                }
-                mk_null()
-            })),
-            Option::from(NativeFn)
-        );
-
-        env.set_var(
-            "sleep".to_string(),
-            mk_native_fn(Arc::new(move |args, _| {
-                let secs = args.get(0)
-                    .expect("sleep: un argument attendu")
-                    .as_any()
-                    .downcast_ref::<IntegerVal>()
-                    .expect("sleep: l'argument doit être un nombre")
-                    .value;
-
-                std::thread::sleep(Duration::from_secs_f64(secs));
-                mk_null()
-            })),
-            Option::from(NativeFn)
-        );
-        
         //let input = fs::read_to_string("code.nwtz").unwrap();
 
         let input = r#"
+//with _code;
 
-log("Hello");
-sleep(1);
-log("world");
+obj truc {
+    truc: "AAA",
+    fn hey(a){
+        log(a);
+    },
+};
 
-for (i = 0; i < 100; i = i+1;){
-    log(i);
-    sleep(0.01);
+fn get(){
+    time()
 }
 
-a = 5;
+h: String = "Hello World";
 
-if a == 5 {
-    log("World");
-} else {
-    log("?");
+truc.hey("aaaa");
+
+//log(system.config);
+gz = [10, 56, true, "AFAZF"];
+
+log(gz[2]);
+
+log(get());
+
+//system.log(system.config);
+truc.hey("a");
+log( system.value_type( truc.hey ) );
+
+if "a" == "a" {
+    log("aA");
 }
 
 "#.to_string();
