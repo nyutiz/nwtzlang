@@ -24,19 +24,16 @@ impl Environment {
         }
 
         if self.var_types.contains_key(&var_name) {
-            match self.var_types.get(&var_name).unwrap() {
-                Some(expected) => {
-                    let actual = new_value
-                        .value_type()
-                        .expect("RuntimeVal should always have a type");
-                    if &actual != expected {
-                        panic!(
-                            "Type error: variable `{}` declared as `{:?}` but assigned `{:?}`",
-                            var_name, expected, actual
-                        );
-                    }
+            if let Some(expected) = self.var_types.get(&var_name).unwrap() {
+                let actual = new_value
+                    .value_type()
+                    .expect("RuntimeVal should always have a type");
+                if &actual != expected {
+                    panic!(
+                        "Type error: variable `{}` declared as `{:?}` but assigned `{:?}`",
+                        var_name, expected, actual
+                    );
                 }
-                None => {}
             }
             self.variables.insert(var_name.clone(), new_value.clone());
         }

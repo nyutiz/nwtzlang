@@ -35,3 +35,17 @@ log("Hello ", input1);
 
 input2: String = input();
 log("Hey ", input2);
+
+log("Enter input : ");
+
+dzgefs = input();
+
+if dzgefs == "a" {
+    log("aA");
+} else {
+    log("AFAFA ! ", dzgefs);
+}
+
+s = system.socket("localhost:8080");
+
+log(s);

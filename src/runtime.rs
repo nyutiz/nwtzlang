@@ -6,7 +6,7 @@ use crate::types::ValueType::{Function, NativeFn};
 
 impl RuntimeVal for NullVal {
     fn value_type(&self) -> Option<ValueType> {
-        Option::from(self.r#type.clone())
+        self.r#type.clone()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -15,7 +15,7 @@ impl RuntimeVal for NullVal {
 }
 impl RuntimeVal for IntegerVal {
     fn value_type(&self) -> Option<ValueType> {
-        Option::from(self.r#type.clone())
+        self.r#type.clone()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -25,7 +25,7 @@ impl RuntimeVal for IntegerVal {
 
 impl RuntimeVal for StringVal {
     fn value_type(&self) -> Option<ValueType> {
-        Option::from(self.r#type.clone())
+        self.r#type.clone()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -34,7 +34,7 @@ impl RuntimeVal for StringVal {
 }
 impl RuntimeVal for ArrayVal {
     fn value_type(&self) -> Option<ValueType> {
-        Option::from(self.r#type.clone())
+        self.r#type.clone()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -61,7 +61,7 @@ impl RuntimeVal for FunctionVal {
 }
 impl RuntimeVal for BooleanVal {
     fn value_type(&self) -> Option<ValueType> {
-        Option::from(self.r#type.clone())
+        self.r#type.clone()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -70,7 +70,7 @@ impl RuntimeVal for BooleanVal {
 }
 impl RuntimeVal for ObjectVal {
     fn value_type(&self) -> Option<ValueType> {
-        Option::from(self.r#type.clone())
+        self.r#type.clone()
     }
 
     fn as_any(&self) -> &dyn Any {

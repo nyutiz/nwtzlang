@@ -8,18 +8,10 @@ async fn main() {
     let mut env = make_global_env();
 
     let input = r#"
+log(system.socket);
 
-log("Enter input : ");
-
-dzgefs = input();
-
-if dzgefs == "a" {
-    log("aA");
-} else {
-    log("AFAFA ! ", dzgefs);
-}
-
-s = system.socket("localhost:8080");
+s = system.socket.start("127.0.0.1:8080", "Hello world client");
+log(s);
 
 
 "#.to_string();

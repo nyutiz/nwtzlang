@@ -12,8 +12,6 @@ pub static RESERVED_NAMES: Lazy<HashSet<String>> = Lazy::new(|| {
     ValueType::iter().map(|vt| format!("{:?}", vt)).collect()
 });
 
-
-
 #[derive(Debug, Clone, EnumIter, PartialEq)]
 pub enum ValueType {
     Null,
@@ -80,6 +78,6 @@ pub struct NativeFnValue {
 
 impl Debug for NativeFnValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<native-fn>")
+        write!(f, "< fn >")
     }
 }

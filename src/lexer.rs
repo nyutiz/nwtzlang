@@ -16,16 +16,14 @@ pub enum Token {
     If,
     #[token("else")]
     Else,
-    #[token("new")]
-    New,
-    #[token("and")]
-    And,
-    #[token("or")]
-    Or,
-    #[token("whl")]
-    While,
-    #[token("in")]
-    In,
+    //#[token("and")]
+    //And,
+    //#[token("or")]
+    //Or,
+    //#[token("whl")]
+    //While,
+    //#[token("in")]
+    //In,
     #[token("for")]
     For,
     #[token("const")]

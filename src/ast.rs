@@ -32,6 +32,12 @@ pub enum NodeType {
 }
 
 
+impl Default for Program {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Program {
     pub fn new() -> Self {
         Self {

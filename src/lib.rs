@@ -174,8 +174,19 @@ pub fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
             .map(|e| match_arg_to_string(e.as_ref()))
             .collect::<Vec<_>>()
             .join(",")
-    } else if let Some(f) = arg.as_any().downcast_ref::<FunctionVal>() {
-        format!("{:?}", f.body)
+        
+    } else if let Some(fu) = arg.as_any().downcast_ref::<FunctionVal>() {
+        format!("{:?}", fu.body)
+    } else if let Some(ob) = arg.as_any().downcast_ref::<ObjectVal>() {
+        ob.properties
+            .lock().unwrap()
+            .iter()
+            .map(|(key, val)| {
+                let v = match_arg_to_string(val.as_ref());
+                format!("{}: {{ {} }}", key, v)
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     } else if arg.as_any().downcast_ref::<NullVal>().is_some() {
         "null".into()
     } else {
@@ -312,9 +323,7 @@ pub fn make_global_env() -> Environment {
 
     env.set_var(
         "system".to_string(),
-        Box::from(ObjectVal{
-            r#type: Option::from(Object),
-            properties: {
+        mk_object({
                 let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
                 props.insert(
@@ -339,7 +348,7 @@ pub fn make_global_env() -> Environment {
                 );
 
                 props.insert(
-                    "value_type".to_string(),
+                    "type".to_string(),
                     mk_fn(Arc::new(|args, _scope| {
                         mk_string(format!("{:?}", args[0].clone().value_type().unwrap()))
                     })),
@@ -347,43 +356,62 @@ pub fn make_global_env() -> Environment {
 
                 props.insert(
                     "socket".to_string(),
-                    mk_fn(Arc::new(move |args, scope| {
-                        let addr = args[0]
-                            .as_any()
-                            .downcast_ref::<StringVal>()
-                            .expect("socket: attend une string")
-                            .clone().value;
+                    mk_object({
+                        let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
-                        let listener = std::net::TcpListener::bind(&addr)
-                            .expect("Impossible de binder l'adresse");
+                        props.insert("start".to_string(), mk_fn(Arc::new(move |args, scope| {
+                            let addr = args.first()
+                                .and_then(|arg| {
+                                    arg.as_any()
+                                        .downcast_ref::<StringVal>()
+                                        .map(|s| s.value.clone())
+                                })
+                                .unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
-                        call_nwtz("log", Some(Vec::from([format!("Serveur démarré sur {}, en attente d'un client...", addr).to_string()])), scope);
+                            let message = args
+                                .get(1)
+                                .and_then(|arg| {
+                                    arg.as_any()
+                                        .downcast_ref::<StringVal>()
+                                        .map(|s| s.value.clone())
+                                })
+                                .unwrap_or_else(|| "Hello from nwtz server!\n".to_string());
 
-                        let (mut stream, peer_addr) = listener
-                            .accept()
-                            .expect("Échec de l'acceptation d'un client");
+                            let listener = std::net::TcpListener::bind(&addr)
+                                .expect("Impossible de binder l'adresse");
 
-                        call_nwtz("log", Some(Vec::from([format!("Client connecté depuis : {}", peer_addr).to_string()])), scope);
+                            call_nwtz("log", Some(Vec::from([format!("Serveur démarré sur {}, en attente d'un client...", addr).to_string()])), scope);
 
+                            let mut out:HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
-                        let mut buffer = [0u8; 512];
-                        let n = stream
-                            .read(&mut buffer)
-                            .expect("Échec de lecture sur le socket");
+                            let (mut stream, peer_addr) = listener
+                                .accept()
+                                .expect("Échec de l'acceptation d'un client");
 
-                        call_nwtz("log", Some(Vec::from([format!("Reçu ({} octets) : {}", n, String::from_utf8_lossy(&buffer[..n])).to_string()])), scope);
+                            call_nwtz("log", Some(Vec::from([format!("Client connecté depuis : {}", peer_addr).to_string()])), scope);
 
-                        stream.write_all(b"Hello from Rust server!\n").expect("Échec d'envoi de la réponse");
-                        call_nwtz("log", Some(Vec::from(["Réponse envoyée, fermeture de la connexion.".to_string()])), scope);
+                            let mut buffer = [0u8; 512];
+                            let n = stream
+                                .read(&mut buffer)
+                                .expect("Échec de lecture sur le socket");
 
-                        //mk_object()
-                        mk_null()
-                    })),
+                            call_nwtz("log", Some(Vec::from([format!("Reçu ({} octets) : {}", n, String::from_utf8_lossy(&buffer[..n])).to_string()])), scope);
+
+                            stream.write_all(message.as_bytes()).expect("Échec d'envoi de la réponse");
+                            call_nwtz("log", Some(Vec::from(["Réponse envoyée, fermeture de la connexion.".to_string()])), scope);
+                            //mk_null()
+
+                            out.insert("output".to_string(), mk_string(String::from_utf8_lossy(&buffer[..n]).to_string()));
+
+                            mk_object(out)
+                        })));
+
+                        props
+                    })
                 );
-
-                Arc::new(Mutex::new(props))
+                props
             },
-        }),
+        ),
         Option::from(Object)
     );
 
@@ -404,6 +432,9 @@ mod tests {
 
     //use crate::{evaluate, make_global_env, tokenize, Parser};
 
+    fn test() {
+        println!("test");
+    }
     
 }
 
