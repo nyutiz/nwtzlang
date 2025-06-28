@@ -34,4 +34,4 @@ input1: String = input();
 log("Hello ", input1);
 
 input2: String = input();
-log("Wsh ", input2);
+log("Hey ", input2);
