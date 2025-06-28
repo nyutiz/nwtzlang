@@ -11,6 +11,7 @@ use crate::types::ValueType::{Array, Boolean, Integer, Null, Object};
 use crate::types::FunctionCall;
 use crate::types::NativeFnValue;
 use crate::types::ValueType::NativeFn;
+use crate::types::ValueType::Function;
 
 use std::collections::{HashMap};
 use std::{env, fs, io, thread};
@@ -63,14 +64,14 @@ pub fn mk_string(value: String) -> Box<StringVal> {
 pub fn mk_array(elements: Vec<Box<dyn RuntimeVal + Send + Sync>>) -> Box<ArrayVal> {
     Box::from(ArrayVal {
         r#type: Option::from(Array),
-        elements: Arc::new(Mutex::new(elements.into())),
+        elements: Arc::new(Mutex::new(elements)),
     })
 }
 
 pub fn mk_object(properties: HashMap<String, Box<dyn RuntimeVal + Send + Sync>>) -> Box<ObjectVal> {
     Box::from(ObjectVal {
         r#type: Option::from(Object),
-        properties: Arc::new(Mutex::new(properties.into())),
+        properties: Arc::new(Mutex::new(properties)),
     })
 }
 
@@ -87,9 +88,7 @@ pub fn native_fs_read(args: Vec<Box<dyn RuntimeVal + Send + Sync>>, _env: &mut E
     })
 }
 
-pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &Environment){
-    
-}
+
 
 macro_rules! register_natives {
     ( $($name:expr => $func:path),* $(,)? ) => {
@@ -108,7 +107,7 @@ register_natives!(
 );
 
 
-pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Vec<String> {
+pub fn interpreter_to_vec_string(env: &mut Environment, input: String) -> Vec<String> {
     let output = Arc::new(Mutex::new(Vec::<String>::new()));
     let output_for_native = output.clone();
 
@@ -127,7 +126,7 @@ pub fn interpreter_to_vec_string(mut env: &mut Environment, input: String) -> Ve
     let tokens = tokenize(input);
     let mut parser = Parser::new(tokens);
     let ast = parser.produce_ast();
-    let _ = evaluate(Box::new(ast), &mut env);
+    let _ = evaluate(Box::new(ast), env);
     output.lock().unwrap().clone()
 }
 
@@ -192,6 +191,64 @@ pub fn drive_stream(mut rx: UnboundedReceiver<String>) {
     });
 }
 
+pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment, ) -> Option<Box<dyn RuntimeVal + Send + Sync>> {
+
+    let arg_vals: Vec<Box<dyn RuntimeVal + Send + Sync>> = args
+        .unwrap_or_default()
+        .into_iter()
+        .map(|s| {
+            let boxed: Box<dyn RuntimeVal + Send + Sync> = mk_string(s);
+            boxed
+        })
+        .collect();
+
+    let v = scope.lookup_var(name.to_string());
+
+    match v.value_type().unwrap() {
+        NativeFn => {
+            let native = v
+                .as_any()
+                .downcast_ref::<NativeFnValue>()
+                .expect("Expected a NativeFnValue");
+            let res = (native.call)(arg_vals, scope);
+            Some(res)
+        }
+        Function => {
+            let f = v
+                .as_any()
+                .downcast_ref::<FunctionVal>()
+                .expect("Expected a FunctionVal");
+
+            let decl_env = f.declaration_env.lock().unwrap();
+            let mut local_scope =
+                Environment::new(Some(Box::new(decl_env.clone())));
+
+            if arg_vals.len() != f.parameters.len() {
+                panic!(
+                    "Function `{}` expected {} args but got {}",
+                    f.name,
+                    f.parameters.len(),
+                    arg_vals.len()
+                );
+            }
+
+            for (param, arg_val) in f.parameters.iter().zip(arg_vals.into_iter()) {
+                local_scope.set_var(param.clone(), arg_val, None);
+            }
+
+            let mut result: Box<dyn RuntimeVal + Send + Sync> = mk_null();
+            for stmt in f.body.iter() {
+                result = evaluate(stmt.clone(), &mut local_scope);
+            }
+
+            Some(result)
+        }
+        _ => None,
+    }
+}
+
+
+
 pub fn make_global_env() -> Environment {
     let mut env = Environment::new(None);
 
@@ -213,7 +270,7 @@ pub fn make_global_env() -> Environment {
             //let mut _guard = output_for_native.lock().unwrap();
             let mut out = String::new();
             for arg in args {
-                out.push_str(&*match_arg_to_string(&*arg));
+                out.push_str(&match_arg_to_string(&*arg));
             }
             println!("{}", out);
             mk_null()
@@ -224,7 +281,7 @@ pub fn make_global_env() -> Environment {
     env.set_var(
         "sleep".to_string(),
         mk_fn(Arc::new(move |args, _| {
-            let secs = args.get(0)
+            let secs = args.first()
                 .expect("sleep: un argument attendu")
                 .as_any()
                 .downcast_ref::<IntegerVal>()
@@ -306,22 +363,19 @@ pub fn make_global_env() -> Environment {
                             .accept()
                             .expect("Échec de l'acceptation d'un client");
 
-                        println!("Client connecté depuis : {}", peer_addr);
+                        call_nwtz("log", Some(Vec::from([format!("Client connecté depuis : {}", peer_addr).to_string()])), scope);
+
 
                         let mut buffer = [0u8; 512];
                         let n = stream
                             .read(&mut buffer)
                             .expect("Échec de lecture sur le socket");
 
-                        println!(
-                            "Reçu ({} octets) : {}",
-                            n,
-                            String::from_utf8_lossy(&buffer[..n])
-                        );
+                        call_nwtz("log", Some(Vec::from([format!("Reçu ({} octets) : {}", n, String::from_utf8_lossy(&buffer[..n])).to_string()])), scope);
 
                         stream.write_all(b"Hello from Rust server!\n").expect("Échec d'envoi de la réponse");
+                        call_nwtz("log", Some(Vec::from(["Réponse envoyée, fermeture de la connexion.".to_string()])), scope);
 
-                        println!("Réponse envoyée, fermeture de la connexion.");
                         //mk_object()
                         mk_null()
                     })),
