@@ -43,3 +43,37 @@ fn test (a){
 test(1.54654654654 * 2);
 
 log(test);
+
+obj truc {
+    truc: "AAA",
+    fn hey(a){
+        log(a);
+    },
+};
+
+fn get(){
+    time()
+}
+
+h: String = "Hello World";
+
+truc.hey("aaaa");
+
+//log(system.config);
+gz = [10, 56, true, "AFAZF"];
+
+log(gz[2]);
+
+log(get());
+
+//system.log(system.config);
+truc.hey("a");
+log( system.value_type( truc.hey ) );
+
+dzgefs = input();
+
+if dzgefs == "a" {
+    log("aA");
+}
+
+log("AFAFA ! ", dzgefs);

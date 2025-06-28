@@ -15,9 +15,9 @@ ValueType définis explicitement par : +
 Commentaires // +
 Impl d'objets +
 Meilleur Log log("Salut ", name) +
-String condition if "a" == "b" +
+String condition if a == "b" +
+Fonction Native getValueType pour comparer dans des conditions +
 
-Fonction Native getValueType pour comparer dans des conditions -
 Boucle While -
 Comparaisons Or, And -
 Exposants ^ ou ** -

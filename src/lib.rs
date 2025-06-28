@@ -1006,9 +1006,9 @@ impl Parser {
                 Box::new(StringVal {
                     r#type: None,
                     kind: NodeType::StringLiteral,
-                    value: s,
+                    value: s[1..s.len()-1].to_string(),
                 }),
-            t => panic!("Variable ou entier attendu après `if` pas {:?}", t),
+            t => panic!("Variable, Chaine ou Entier attendu après `if` pas {:?}", t),
         };
 
         let operator = match self.eat() {
@@ -1037,7 +1037,7 @@ impl Parser {
                 Box::new(StringVal {
                     r#type: None,
                     kind: NodeType::StringLiteral,
-                    value: s,
+                    value: s[1..s.len()-1].to_string(),
                 }),
             e => panic!("Variable ou entier attendu après l’opérateur, {:?}", e),
         };
@@ -1656,7 +1656,7 @@ pub fn eval_if_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<
     let if_stmt = ast_node.as_any().downcast_ref::<IfStatement>()
         .expect("Expected an IfStatement node");
     
-    println!("{:?}", if_stmt);
+    //println!("{:?}", if_stmt);
 
     let cond_val = evaluate(if_stmt.condition.clone(), env);
     let condition_is_true = if let Some(boolean) = cond_val.as_any().downcast_ref::<BooleanVal>() {
@@ -1845,6 +1845,8 @@ pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
 pub fn eval_string_binary_expr(lhs: &StringVal, rhs: &StringVal, operator: &str, ) -> Box<dyn RuntimeVal + Send + Sync> {
     let lhs_value = lhs.value.clone();
     let rhs_value = rhs.value.clone();
+    
+    //println!("l {}, r{}", lhs_value, rhs_value);
 
     match operator {
         "=="  => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value.eq(&rhs_value)}),
@@ -2195,8 +2197,14 @@ pub fn make_global_env() -> Environment {
         "input".to_string(),
         mk_native_fn(Arc::new(move |_args, _| {
             let mut out = String::new();
-            io::stdin().read_line(&mut out).expect("failed to readline");
-            mk_string(out.trim_end().to_string())
+            io::stdin()
+                .read_line(&mut out)
+                .expect("failed to readline");
+            out = out.trim_end().to_string();
+            
+            //println!("EXTRAIT : {}", out);
+
+            mk_string(out)
         })),
         Option::from(NativeFn)
     );
@@ -2267,40 +2275,21 @@ mod tests {
         //let input = fs::read_to_string("code.nwtz").unwrap();
 
         let input = r#"
-//with _code;
 
-obj truc {
-    truc: "AAA",
-    fn hey(a){
-        log(a);
-    },
-};
+dzgefs = input();
 
-fn get(){
-    time()
-}
-
-h: String = "Hello World";
-
-truc.hey("aaaa");
-
-//log(system.config);
-gz = [10, 56, true, "AFAZF"];
-
-log(gz[2]);
-
-log(get());
-
-//system.log(system.config);
-truc.hey("a");
-log( system.value_type( truc.hey ) );
-
-if "a" == "a" {
+if dzgefs == "a" {
     log("aA");
+} else {
+    log("AFAFA ! ", dzgefs);
 }
+
 
 "#.to_string();
-
+        
+        // remplacer StringLitteral par Identifier // deja identifier donc pas ça le pb  StringVal { type: None, kind: StringLiteral, value: "\"a\""}
+        // Peut etre stringlitteral .value
+        
         let tokens = tokenize(input);
         let mut parser = Parser::new(tokens);
         let ast = parser.produce_ast();
