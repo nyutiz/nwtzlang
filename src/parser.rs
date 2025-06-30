@@ -772,7 +772,6 @@ impl Parser {
             }),
             Token::StringLiteral(value) =>{
                 let unquoted = value[1..value.len()-1].to_string();
-
                 Box::from(StringVal {
                     r#type: Option::from(ValueType::String),
                     kind: NodeType::StringLiteral,

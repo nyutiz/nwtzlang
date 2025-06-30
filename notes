@@ -19,10 +19,13 @@ String condition if a == "b" +
 Fonction Native getValueType pour comparer dans des conditions +
 Thread (wait -> attend la fin de tous les threads) +
 
+Implementation de self - // récupérer l'environnement de la fonction de l'objet et resolve dessus 
 Boucle While -
 Comparaisons Or, And -
 Exposants ^ ou ** -
 Ajouter un type dans les Fonctions fn(a:Integer){} --
+
+
 
 /*
 

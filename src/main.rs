@@ -8,24 +8,14 @@ async fn main() {
     let mut env = make_global_env();
 
     let input = r#"
-thread.start(fn start() {
-    log("Hello from thread!");
-    sleep(5);
-    log("Thread working...");
-});
 
-s = thread.start(fn start() {
-    for(i = 0; i < 100; i = i + 1;) {
-        log(i);
-        sleep(0.05);
-        //log(time());
-    }
-});
+obj Person {
+    age: 3,
+    name: "Jhon Doe",
+};
 
-//log("Thread : ", s);
+log(Person.get_name());
 
-log("Main thread continues...");
-thread.wait();
 "#.to_string();
     
 
