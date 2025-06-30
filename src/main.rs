@@ -8,12 +8,14 @@ async fn main() {
     let mut env = make_global_env();
 
     let input = r#"
-log(system.socket);
+thread.start(fn worker() {
+    log("Hello from thread!");
+    sleep(5);
+    log("Thread working...");
+});
 
-s = system.socket.start("127.0.0.1:8080", "Hello world client");
-log(s);
-
-
+log("Main thread continues...");
+sleep(5);
 "#.to_string();
     
 

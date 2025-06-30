@@ -28,10 +28,12 @@ pub enum Token {
     For,
     #[token("const")]
     Const,
-    //#[token("log")]
-    //Log,
-    //#[token("main")]
-    //Main,
+    #[token("self")]
+    SelfKw,
+    #[token("async")]
+    Async,
+    #[token("await")]
+    Await,
     #[token("+")]
     Plus,
     #[token("-")]

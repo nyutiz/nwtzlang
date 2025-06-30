@@ -651,14 +651,57 @@ impl Parser {
     fn parse_arguments_list(&mut self) -> Vec<Box<dyn Stmt>>{
 
         let mut args = Vec::new();
-        args.insert(0, self.parse_assignment_expr());
 
-        while let Token::Comma = self.at() {
-            self.eat();
+        if *self.at() == Token::Fn {
+            args.push(self.parse_function_expr());
+        } else {
             args.push(self.parse_assignment_expr());
         }
 
+        while let Token::Comma = self.at() {
+            self.eat();
+            if *self.at() == Token::Fn {
+                args.push(self.parse_function_expr());
+            } else {
+                args.push(self.parse_assignment_expr());
+            }
+        }
+
         args
+    }
+
+    fn parse_function_expr(&mut self) -> Box<dyn Stmt> {
+        self.eat();
+
+        let name = if let Token::Identifier(name) = self.eat() {
+            name
+        } else {
+            panic!("Expected function name after 'fn' in function expression");
+        };
+
+        let args = self.parse_args();
+        let mut params = Vec::new();
+        for arg in args {
+            if let Some(ident) = arg.as_any().downcast_ref::<IdentifierExpr>() {
+                params.push(ident.name.clone());
+            } else {
+                panic!("Inside function expression expected parameters to be identifiers");
+            }
+        }
+
+        self.expect(Token::LBrace, "Expected function body following declaration");
+        let mut body = Vec::new();
+        while self.not_eof() && *self.at() != Token::RBrace {
+            body.push(self.parse_stmt());
+        }
+        self.expect(Token::RBrace, "Closing brace expected inside function expression");
+
+        Box::from(FunctionDeclaration {
+            kind: NodeType::FunctionDeclaration,
+            parameters: params,
+            name,
+            body,
+        })
     }
 
     fn parse_array_expr(&mut self) -> Box<dyn Stmt> {

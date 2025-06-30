@@ -322,94 +322,143 @@ pub fn make_global_env() -> Environment {
     );
 
     env.set_var(
+        "thread".to_string(),
+        mk_object({
+            let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+
+            props.insert(
+                "start".to_string(),
+                mk_fn(Arc::new(|args, _scope| {
+
+                    if args.is_empty() {
+                        panic!("thread.start: fonction attendue comme argument");
+                    }
+
+                    let func_arg = &args[0];
+
+                    match func_arg.value_type() {
+                        Some(Function) => {
+                            let func = func_arg
+                                .as_any()
+                                .downcast_ref::<FunctionVal>()
+                                .expect("Expected FunctionVal");
+
+                            let func_name = func.name.clone();
+                            let func_body = func.body.clone();
+                            let func_env = func.declaration_env.lock().unwrap().clone();
+
+                            thread::spawn(move || {
+                                let mut local_env = Environment::new(Some(Box::new(func_env)));
+
+                                for stmt in func_body.iter() {
+                                    let _ = evaluate(stmt.clone(), &mut local_env);
+                                }
+                            });
+
+                            mk_string(format!("Thread {} démarré", func_name))
+                        }
+                        _ => {
+                            panic!("thread.start: argument doit être une fonction");
+                        }
+                    }
+                })),
+            );
+
+            props
+            },
+        ),
+        Option::from(Object)
+    );
+
+    env.set_var(
         "system".to_string(),
         mk_object({
-                let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+            let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
-                props.insert(
-                    "a".to_string(),
-                    mk_string("A A A A A".to_string()),
-                );
+            props.insert(
+                "a".to_string(),
+                mk_string("A A A A A".to_string()),
+            );
 
-                props.insert(
-                    "config".to_string(),
-                    {
+            props.insert(
+                "config".to_string(),
+                {
 
-                        // pas la meilleure implementation, il faudrait sysinfo sauf que lib trop grandes
+                    // pas la meilleure implementation, il faudrait sysinfo sauf que lib trop grandes
 
-                        let mut a:Vec<Box<dyn RuntimeVal + Send + Sync>> = Vec::new();
+                    let mut a:Vec<Box<dyn RuntimeVal + Send + Sync>> = Vec::new();
 
-                        for (key, value) in env::vars() {
-                            a.push(mk_string(format!("{}: {:#?}", key, value).to_string()));
-                        }
-
-                        mk_array(a)
+                    for (key, value) in env::vars() {
+                        a.push(mk_string(format!("{}: {:#?}", key, value).to_string()));
                     }
-                );
 
-                props.insert(
-                    "type".to_string(),
-                    mk_fn(Arc::new(|args, _scope| {
-                        mk_string(format!("{:?}", args[0].clone().value_type().unwrap()))
-                    })),
-                );
+                    mk_array(a)
+                }
+            );
 
-                props.insert(
-                    "socket".to_string(),
-                    mk_object({
-                        let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+            props.insert(
+                "type".to_string(),
+                mk_fn(Arc::new(|args, _scope| {
+                    mk_string(format!("{:?}", args[0].clone().value_type().unwrap()))
+                })),
+            );
 
-                        props.insert("start".to_string(), mk_fn(Arc::new(move |args, scope| {
-                            let addr = args.first()
-                                .and_then(|arg| {
-                                    arg.as_any()
-                                        .downcast_ref::<StringVal>()
-                                        .map(|s| s.value.clone())
-                                })
-                                .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+            props.insert(
+                "socket".to_string(),
+                mk_object({
+                    let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
-                            let message = args
-                                .get(1)
-                                .and_then(|arg| {
-                                    arg.as_any()
-                                        .downcast_ref::<StringVal>()
-                                        .map(|s| s.value.clone())
-                                })
-                                .unwrap_or_else(|| "Hello from nwtz server!\n".to_string());
+                    props.insert("start".to_string(), mk_fn(Arc::new(move |args, scope| {
+                        let addr = args.first()
+                            .and_then(|arg| {
+                                arg.as_any()
+                                    .downcast_ref::<StringVal>()
+                                    .map(|s| s.value.clone())
+                            })
+                            .unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
-                            let listener = std::net::TcpListener::bind(&addr)
-                                .expect("Impossible de binder l'adresse");
+                        let message = args
+                            .get(1)
+                            .and_then(|arg| {
+                                arg.as_any()
+                                    .downcast_ref::<StringVal>()
+                                    .map(|s| s.value.clone())
+                            })
+                            .unwrap_or_else(|| "Hello from nwtz server!\n".to_string());
 
-                            call_nwtz("log", Some(Vec::from([format!("Serveur démarré sur {}, en attente d'un client...", addr).to_string()])), scope);
+                        let listener = std::net::TcpListener::bind(&addr)
+                            .expect("Impossible de binder l'adresse");
 
-                            let mut out:HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+                        call_nwtz("log", Some(Vec::from([format!("Serveur démarré sur {}, en attente d'un client...", addr).to_string()])), scope);
 
-                            let (mut stream, peer_addr) = listener
-                                .accept()
-                                .expect("Échec de l'acceptation d'un client");
+                        let mut out:HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
-                            call_nwtz("log", Some(Vec::from([format!("Client connecté depuis : {}", peer_addr).to_string()])), scope);
+                        let (mut stream, peer_addr) = listener
+                            .accept()
+                            .expect("Échec de l'acceptation d'un client");
 
-                            let mut buffer = [0u8; 512];
-                            let n = stream
-                                .read(&mut buffer)
-                                .expect("Échec de lecture sur le socket");
+                        call_nwtz("log", Some(Vec::from([format!("Client connecté depuis : {}", peer_addr).to_string()])), scope);
 
-                            call_nwtz("log", Some(Vec::from([format!("Reçu ({} octets) : {}", n, String::from_utf8_lossy(&buffer[..n])).to_string()])), scope);
+                        let mut buffer = [0u8; 512];
+                        let n = stream
+                            .read(&mut buffer)
+                            .expect("Échec de lecture sur le socket");
 
-                            stream.write_all(message.as_bytes()).expect("Échec d'envoi de la réponse");
-                            call_nwtz("log", Some(Vec::from(["Réponse envoyée, fermeture de la connexion.".to_string()])), scope);
-                            //mk_null()
+                        call_nwtz("log", Some(Vec::from([format!("Reçu ({} octets) : {}", n, String::from_utf8_lossy(&buffer[..n])).to_string()])), scope);
 
-                            out.insert("output".to_string(), mk_string(String::from_utf8_lossy(&buffer[..n]).to_string()));
+                        stream.write_all(message.as_bytes()).expect("Échec d'envoi de la réponse");
+                        call_nwtz("log", Some(Vec::from(["Réponse envoyée, fermeture de la connexion.".to_string()])), scope);
+                        //mk_null()
 
-                            mk_object(out)
-                        })));
+                        out.insert("output".to_string(), mk_string(String::from_utf8_lossy(&buffer[..n]).to_string()));
 
-                        props
-                    })
-                );
-                props
+                        mk_object(out)
+                    })));
+
+                    props
+                })
+            );
+            props
             },
         ),
         Option::from(Object)
