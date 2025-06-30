@@ -348,7 +348,7 @@ pub fn make_global_env() -> Environment {
                                 .downcast_ref::<FunctionVal>()
                                 .expect("Expected FunctionVal");
 
-                            let func_name = func.name.clone();
+                            //let func_name = func.name.clone();
                             let func_body = func.body.clone();
                             let func_env = func.declaration_env.lock().unwrap().clone();
 
@@ -362,7 +362,8 @@ pub fn make_global_env() -> Environment {
 
                             thread_manager.handles.lock().unwrap().push(handle);
 
-                            mk_string(format!("Thread {} démarré", func_name))
+                            //mk_string(format!("Thread {} démarré", func_name))
+                            mk_null()
                         }
                         _ => {
                             panic!("thread.start: argument doit être une fonction");

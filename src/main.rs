@@ -22,7 +22,7 @@ s = thread.start(fn start() {
     }
 });
 
-log("Thread : ", s);
+//log("Thread : ", s);
 
 log("Main thread continues...");
 thread.wait();
