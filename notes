@@ -17,6 +17,7 @@ Impl d'objets +
 Meilleur Log log("Salut ", name) +
 String condition if a == "b" +
 Fonction Native getValueType pour comparer dans des conditions +
+Thread (wait -> attend la fin de tous les threads) +
 
 Boucle While -
 Comparaisons Or, And -

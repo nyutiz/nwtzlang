@@ -6,6 +6,8 @@ pub mod environment;
 pub mod runtime;
 pub mod lexer;
 
+pub mod thread;
+
 use crate::types::{ArrayVal, BooleanVal, FunctionVal, IntegerVal, NullVal, ObjectVal, ValueType};
 use crate::types::ValueType::{Array, Boolean, Integer, Null, Object};
 use crate::types::FunctionCall;
@@ -14,7 +16,7 @@ use crate::types::ValueType::NativeFn;
 use crate::types::ValueType::Function;
 
 use std::collections::{HashMap};
-use std::{env, fs, io, thread};
+use std::{env, fs, io};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
@@ -25,6 +27,7 @@ use crate::evaluator::evaluate;
 use crate::lexer::tokenize;
 use crate::parser::Parser;
 use crate::runtime::RuntimeVal;
+use crate::thread::ThreadManager;
 //use crate::NodeType::Identifier;
 //use crate::Token::{LBrace, RBrace, Semicolon};
 //use crate::ValueType::{Boolean, NativeFn, Null, Integer, Object, Function, Array};
@@ -195,7 +198,7 @@ pub fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
 }
 
 pub fn drive_stream(mut rx: UnboundedReceiver<String>) {
-    thread::spawn(move || {
+    std::thread::spawn(move || {
         while let Some(msg) = rx.blocking_recv() {
             println!("{}", msg);
         }
@@ -262,6 +265,7 @@ pub fn  call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment
 
 pub fn make_global_env() -> Environment {
     let mut env = Environment::new(None);
+    let thread_manager = ThreadManager::new();
 
     env.set_var("null".to_string(), mk_null(), Option::from(Null));
     env.set_var("true".to_string(), mk_bool(true), Option::from(Boolean));
@@ -299,7 +303,7 @@ pub fn make_global_env() -> Environment {
                 .expect("sleep: l'argument doit être un nombre")
                 .value;
 
-            thread::sleep(Duration::from_secs_f64(secs));
+            std::thread::sleep(Duration::from_secs_f64(secs));
             mk_null()
         })),
         Option::from(NativeFn)
@@ -325,10 +329,11 @@ pub fn make_global_env() -> Environment {
         "thread".to_string(),
         mk_object({
             let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+            let thread_manager_clone = thread_manager.clone();
 
             props.insert(
                 "start".to_string(),
-                mk_fn(Arc::new(|args, _scope| {
+                mk_fn(Arc::new(move |args, _scope| {
 
                     if args.is_empty() {
                         panic!("thread.start: fonction attendue comme argument");
@@ -347,13 +352,15 @@ pub fn make_global_env() -> Environment {
                             let func_body = func.body.clone();
                             let func_env = func.declaration_env.lock().unwrap().clone();
 
-                            thread::spawn(move || {
+                            let handle = std::thread::spawn(move || {
                                 let mut local_env = Environment::new(Some(Box::new(func_env)));
 
                                 for stmt in func_body.iter() {
                                     let _ = evaluate(stmt.clone(), &mut local_env);
                                 }
                             });
+
+                            thread_manager.handles.lock().unwrap().push(handle);
 
                             mk_string(format!("Thread {} démarré", func_name))
                         }
@@ -364,6 +371,16 @@ pub fn make_global_env() -> Environment {
                 })),
             );
 
+            props.insert(
+                "wait".to_string(),
+                mk_fn(Arc::new({
+                    move |_args, _scope| {
+                        thread_manager_clone.wait_all();
+                        mk_null()
+                    }
+                })),
+            );
+            
             props
             },
         ),

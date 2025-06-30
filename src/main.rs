@@ -15,7 +15,7 @@ thread.start(fn worker() {
 });
 
 log("Main thread continues...");
-sleep(5);
+thread.wait_all();
 "#.to_string();
     
 
