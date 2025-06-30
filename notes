@@ -1,4 +1,4 @@
-## + => Fait, - =>  Pas Fait ##
+## + => Fait, - =>  Pas Fait, -- => Pas prévu ##
 
 Declarations de variables +
 Appel variables +
@@ -22,4 +22,13 @@ Thread (wait -> attend la fin de tous les threads) +
 Boucle While -
 Comparaisons Or, And -
 Exposants ^ ou ** -
-Ajouter un type dans les Fonctions fn(a:Integer){} -
+Ajouter un type dans les Fonctions fn(a:Integer){} --
+
+/*
+
+Idées
+
+Définir un thread avec a = thread::start();
+Pouvoir manipuler le thread avec a.stop(); etc ou a.join() qui appellerai le reste de la fonction dans le thread principal
+
+*/
