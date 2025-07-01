@@ -8,6 +8,8 @@ async fn main() {
     let mut env = make_global_env();
 
     let input = r#"
+with !a;
+with _a;
 
 obj Person {
     age: 3,

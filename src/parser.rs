@@ -3,7 +3,6 @@ use std::fs;
 use strum::IntoEnumIterator;
 use crate::ast::{ArrayLiteral, AssignmentExpr, BinaryExpr, BooleanLiteral, CallExpr, ForStatement, FunctionDeclaration, IdentifierExpr, IfStatement, ImportAst, LiteralExpr, MemberExpr, NodeType, NullLiteral, ObjectLiteral, Program, Property, Stmt, StringVal, VariableDeclaration};
 use crate::ast::NodeType::Identifier;
-use crate::call_nwtz;
 use crate::lexer::{tokenize, Token};
 use crate::types::ValueType;
 use crate::types::ValueType::{Boolean, Integer, Null, Object};
@@ -120,7 +119,7 @@ impl Parser {
     pub fn provide_import(&mut self, imports: Vec<HashMap<String, String>>) {
         self.imports = Some(imports);
     }
-    pub fn get_import(&self, name: &str) -> String {
+    pub fn get_import(&self, name: String) -> String {
         let imports = self
             .imports
             .as_ref()
@@ -128,7 +127,7 @@ impl Parser {
 
         imports
             .iter()
-            .find_map(|map| map.get(name).cloned())
+            .find_map(|map| map.get(&name).cloned())
             .expect(&format!("Import not found: {}", name))
     }
 
@@ -140,8 +139,6 @@ impl Parser {
         } else {
             panic!("Expected import name following with keyword");
         };
-
-        //println!("{:?}", name);
 
         if name.starts_with("_") {
             let mut new_name = name[1..].to_string();
@@ -158,9 +155,9 @@ impl Parser {
                 body: external_ast.body,
             })
         } else if name.starts_with("!") {
-            //let new_name = ;
-            
-            let import = self.get_import(&name[1..]);
+            let new_name = name[1..].to_string();
+
+            let import = self.get_import(new_name);
             
             let tokens = tokenize(import);
             let mut external_parser = Parser::new(tokens);
@@ -171,7 +168,7 @@ impl Parser {
                 body: external_ast.body,
             })
         } else {
-            unimplemented!("Chargement depuis une installation locale ou via le web");
+            unimplemented!("Chargement depuis une installation locale ou via le web non implémenté");
         }
 
 
