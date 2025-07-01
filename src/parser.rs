@@ -123,7 +123,7 @@ impl Parser {
         let imports = self
             .imports
             .as_ref()
-            .expect("No imports provided");
+            .expect(format!("No imports provided for {}", name).as_str());
 
         imports
             .iter()
