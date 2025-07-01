@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use strum::IntoEnumIterator;
 use crate::ast::{ArrayLiteral, AssignmentExpr, BinaryExpr, BooleanLiteral, CallExpr, ForStatement, FunctionDeclaration, IdentifierExpr, IfStatement, ImportAst, LiteralExpr, MemberExpr, NodeType, NullLiteral, ObjectLiteral, Program, Property, Stmt, StringVal, VariableDeclaration};
@@ -10,7 +11,7 @@ use crate::types::ValueType::{Boolean, Integer, Null, Object};
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
-    imports: Option<Vec<String>>,
+    imports: Option<Vec<HashMap<String, String>>>,
 }
 
 impl Parser {
@@ -116,10 +117,10 @@ impl Parser {
         }
     }
 
-    pub fn provide_import(&mut self, imports: Vec<String>) {
+    pub fn provide_import(&mut self, imports: Vec<HashMap<String, String>>) {
         self.imports = Some(imports);
     }
-    pub fn get_import(&self, name: String) -> String {
+    pub fn get_import(&self, name: &str) -> String {
         let imports = self
             .imports
             .as_ref()
@@ -127,8 +128,7 @@ impl Parser {
 
         imports
             .iter()
-            .find(|imp| *imp == &name)
-            .cloned()
+            .find_map(|map| map.get(name).cloned())
             .expect(&format!("Import not found: {}", name))
     }
 
@@ -158,9 +158,9 @@ impl Parser {
                 body: external_ast.body,
             })
         } else if name.starts_with("!") {
-            let new_name = name[1..].to_string();
+            //let new_name = ;
             
-            let import = self.get_import(new_name.clone());
+            let import = self.get_import(&name[1..]);
             
             let tokens = tokenize(import);
             let mut external_parser = Parser::new(tokens);
