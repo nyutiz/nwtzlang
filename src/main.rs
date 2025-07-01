@@ -21,6 +21,7 @@ log(Person.get_name());
 
     let tokens = tokenize(input);
     let mut parser = Parser::new(tokens);
+    //parser.provide_import();
     let ast = parser.produce_ast();
     //println!("AST{:#?}\n\n", ast);
     let _ = evaluate(Box::new(ast), &mut env);

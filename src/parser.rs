@@ -2,6 +2,7 @@ use std::fs;
 use strum::IntoEnumIterator;
 use crate::ast::{ArrayLiteral, AssignmentExpr, BinaryExpr, BooleanLiteral, CallExpr, ForStatement, FunctionDeclaration, IdentifierExpr, IfStatement, ImportAst, LiteralExpr, MemberExpr, NodeType, NullLiteral, ObjectLiteral, Program, Property, Stmt, StringVal, VariableDeclaration};
 use crate::ast::NodeType::Identifier;
+use crate::call_nwtz;
 use crate::lexer::{tokenize, Token};
 use crate::types::ValueType;
 use crate::types::ValueType::{Boolean, Integer, Null, Object};
@@ -9,11 +10,12 @@ use crate::types::ValueType::{Boolean, Integer, Null, Object};
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
+    imports: Option<Vec<String>>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, position: 0 }
+        Self { tokens, position: 0, imports: None }
     }
 
     pub fn produce_ast(&mut self) -> Program {
@@ -114,6 +116,22 @@ impl Parser {
         }
     }
 
+    pub fn provide_import(&mut self, imports: Vec<String>) {
+        self.imports = Some(imports);
+    }
+    pub fn get_import(&self, name: String) -> String {
+        let imports = self
+            .imports
+            .as_ref()
+            .expect("No imports provided");
+
+        imports
+            .iter()
+            .find(|imp| *imp == &name)
+            .cloned()
+            .expect(&format!("Import not found: {}", name))
+    }
+
     fn parse_with_declaration(&mut self) -> Box<dyn Stmt> {
         self.eat();
 
@@ -131,6 +149,19 @@ impl Parser {
             let import = fs::read_to_string(&new_name)
                 .expect("Erreur lors de la lecture du fichier");
             //println!("{}", import);
+            let tokens = tokenize(import);
+            let mut external_parser = Parser::new(tokens);
+            let external_ast = external_parser.produce_ast();
+            self.expect(Token::Semicolon, "';' after import");
+            Box::from(ImportAst {
+                kind: NodeType::ImportAst,
+                body: external_ast.body,
+            })
+        } else if name.starts_with("!") {
+            let new_name = name[1..].to_string();
+            
+            let import = self.get_import(new_name.clone());
+            
             let tokens = tokenize(import);
             let mut external_parser = Parser::new(tokens);
             let external_ast = external_parser.produce_ast();

@@ -30,10 +30,10 @@ pub enum Token {
     Const,
     #[token("self")]
     SelfKw,
-    #[token("async")]
-    Async,
-    #[token("await")]
-    Await,
+    //#[token("async")]
+    //Async,
+    //#[token("await")]
+    //Await,
     #[token("+")]
     Plus,
     #[token("-")]
