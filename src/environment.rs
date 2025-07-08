@@ -9,6 +9,16 @@ pub struct Environment {
     var_types: HashMap<String, Option<ValueType>>,
 }
 
+impl Default for Environment {
+    fn default() -> Self {
+        Environment {
+            parent: None,
+            variables: HashMap::new(),
+            var_types: HashMap::new(),
+        }
+    }
+}
+
 impl Environment {
     pub fn new(parent: Option<Box<Environment>>) -> Self {
         Environment {
