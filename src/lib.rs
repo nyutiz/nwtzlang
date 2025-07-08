@@ -130,7 +130,8 @@ pub fn interpreter_to_vec_string(env: &mut Environment, input: String) -> Vec<St
     let mut parser = Parser::new(tokens);
     let ast = parser.produce_ast();
     let _ = evaluate(Box::new(ast), env);
-    output.lock().unwrap().clone()
+    let o = output.lock().unwrap().clone(); 
+    o
 }
 
 pub fn interpreter_to_stream(env: &mut Environment, input: String, ) -> UnboundedReceiver<String> {
