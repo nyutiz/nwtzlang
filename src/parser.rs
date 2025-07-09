@@ -10,7 +10,7 @@ use crate::types::ValueType::{Boolean, Integer, Null, Object};
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
-    imports: Option<Vec<HashMap<String, String>>>,
+    imports: Option<HashMap<String, String>>,
 }
 
 impl Parser {
@@ -125,10 +125,7 @@ impl Parser {
             .as_ref()
             .expect(format!("No imports provided for {}", name).as_str());
 
-        imports
-            .iter()
-            .find_map(|map| map.get(&name).cloned())
-            .expect(&format!("Import not found: {}", name))
+        imports.get(&name).unwrap().clone()
     }
 
     fn parse_with_declaration(&mut self) -> Box<dyn Stmt> {
