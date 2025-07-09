@@ -116,7 +116,7 @@ impl Parser {
         }
     }
 
-    pub fn provide_import(&mut self, imports: Vec<HashMap<String, String>>) {
+    pub fn provide_import(&mut self, imports: HashMap<String, String>) {
         self.imports = Some(imports);
     }
     pub fn get_import(&self, name: String) -> String {
