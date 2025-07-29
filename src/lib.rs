@@ -280,6 +280,49 @@ pub fn make_global_env() -> Environment {
         Option::from(NativeFn),
     );
 
+    use std::process::Command;
+
+    env.set_var(
+        "sh".to_string(),
+        mk_fn(Arc::new(move |args, _| {
+            let mut command_str = String::new();
+            for arg in args {
+                command_str.push_str(&match_arg_to_string(&*arg));
+            }
+            if command_str.trim().is_empty() {
+                eprintln!("Erreur: commande vide");
+                return mk_null();
+            }
+            let output = if cfg!(target_os = "windows") {
+                Command::new("cmd")
+                    .args(["/C", &command_str])
+                    .output()
+            } else {
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(&command_str)
+                    .output()
+            };
+
+            match output {
+                Ok(output) => {
+                    if !output.stdout.is_empty() {
+                        print!("{}", String::from_utf8_lossy(&output.stdout));
+                    }
+                    if !output.stderr.is_empty() {
+                        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+                    }
+                    mk_null()
+                }
+                Err(e) => {
+                    eprintln!("Erreur lors de l'exécution de la commande: {}", e);
+                    mk_null()
+                }
+            }
+        })),
+        Option::from(NativeFn)
+    );
+    
     env.set_var(
         "log".to_string(),
         mk_fn(Arc::new(move |args, _| {
