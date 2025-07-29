@@ -357,13 +357,10 @@ pub fn eval_program(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
 
     let mut last_evaluated: Box<dyn RuntimeVal + Send + Sync> = mk_null();
 
-    for stmt in program.body.into_iter().filter(|s| {
-        !(matches!(s.kind(), NodeType::Identifier) && s.as_any().downcast_ref::<IdentifierExpr>().unwrap().name == "null")
-    }) {
+    for stmt in program.body.into_iter().filter(|s| { !(matches!(s.kind(), NodeType::Identifier) && s.as_any().downcast_ref::<IdentifierExpr>().unwrap().name == "null") }) {
         last_evaluated = evaluate(stmt, env);
     }
-
-
+    
     last_evaluated
 }
 
