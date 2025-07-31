@@ -233,8 +233,8 @@ pub struct ArrayLiteral {
 
 #[derive(Debug, Clone)]
 pub struct BooleanLiteral {
-    pub(crate) kind: NodeType,
-    pub(crate) value: bool,
+    pub kind: NodeType,
+    pub value: bool,
 }
 
 #[derive(Debug, Clone)]

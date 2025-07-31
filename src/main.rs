@@ -45,7 +45,7 @@ async fn main() {
             "-r" => {
                 i += 1;
                 if i >= args.len() {
-                    eprintln!("Error: no file path provided after '-f'");
+                    eprintln!("Error: no file path provided after '-r'");
                     process::exit(1);
                 }
                 input = fs::read_to_string(&args[i]).unwrap_or_else(|err| {

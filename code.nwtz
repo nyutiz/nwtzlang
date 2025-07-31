@@ -1,6 +1,4 @@
-with _test;
-
-log(Test);
+test=null;
 
 fn __hello__ (){
     log(45454);
