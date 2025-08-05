@@ -23,7 +23,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use crate::ast::{NodeType, StringVal};
 use crate::environment::Environment;
-use crate::evaluator::evaluate;
+use crate::evaluator::{eval};
 use crate::lexer::tokenize;
 use crate::parser::Parser;
 use crate::runtime::RuntimeVal;
@@ -129,7 +129,7 @@ pub fn interpreter_to_vec_string(env: &mut Environment, input: String) -> Vec<St
     let tokens = tokenize(input);
     let mut parser = Parser::new(tokens);
     let ast = parser.produce_ast();
-    let _ = evaluate(Box::new(ast), env);
+    let _ = eval(Box::new(ast), env);
     let o = output.lock().unwrap().clone(); 
     o
 }
@@ -156,7 +156,7 @@ pub fn interpreter_to_stream(env: &mut Environment, input: String, ) -> Unbounde
 
     let mut env_for_task = env.clone();
     tokio::spawn(async move {
-        let _ = evaluate(Box::new(ast), &mut env_for_task);
+        let _ = eval(Box::new(ast), &mut env_for_task);
         drop(tx);
     });
 
@@ -253,7 +253,7 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment,
 
             let mut result: Box<dyn RuntimeVal + Send + Sync> = mk_null();
             for stmt in f.body.iter() {
-                result = evaluate(stmt.clone(), &mut local_scope);
+                result = eval(stmt.clone(), &mut local_scope);
             }
 
             Some(result)
@@ -400,7 +400,7 @@ pub fn make_global_env() -> Environment {
                                 let mut local_env = Environment::new(Some(Box::new(func_env)));
 
                                 for stmt in func_body.iter() {
-                                    let _ = evaluate(stmt.clone(), &mut local_env);
+                                    let _ = eval(stmt.clone(), &mut local_env);
                                 }
                             });
 

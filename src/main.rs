@@ -1,4 +1,4 @@
-use nwtzlang::evaluator::evaluate;
+use nwtzlang::evaluator::eval;
 use nwtzlang::lexer::tokenize;
 use nwtzlang::make_global_env;
 use nwtzlang::parser::Parser;
@@ -82,7 +82,7 @@ async fn main() {
         println!("{:#?}\n", ast);
     }
 
-    let result = evaluate(Box::new(ast), &mut env);
+    let result = eval(Box::new(ast), &mut env);
 
     if !matches!(result.value_type(), Some(ValueType::Null)) {
         println!("{:#?}", result);
@@ -117,7 +117,7 @@ async fn run_repl(env: &mut Environment) {
         let mut parser = Parser::new(tokens);
         let ast = parser.produce_ast();
 
-        let result = evaluate(Box::new(ast), env);
+        let result = eval(Box::new(ast), env);
         if !matches!(result.value_type(), Some(ValueType::Null)) {
             println!("{:#?}", result);
         }
