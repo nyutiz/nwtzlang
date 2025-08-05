@@ -18,6 +18,11 @@ impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, position: 0, imports: None, main: false }
     }
+    
+    pub fn has_main(&mut self) -> bool {
+        self.produce_ast();
+        self.main
+    }
 
     pub fn produce_ast(&mut self) -> Program {
         let mut program = Program::new();
