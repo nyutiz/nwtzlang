@@ -473,8 +473,8 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
     }
 
     if let Some(func) = callee.as_any().downcast_ref::<FunctionVal>() {
-        let decl_env = func.declaration_env.lock().unwrap();
-        let mut scope = Environment::new(Some(Box::new(decl_env.clone())));
+        let mut scope = Environment::new(Some(Box::new(env.clone())));
+
         if args.len() != func.parameters.len() {
             panic!(
                 "Function `{}` expected {} arguments but got {}",
@@ -498,7 +498,6 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
 
     panic!("Cannot call value that is not a function: {:?}", callee);
 }
-
 
 pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync>{
     let func = node
