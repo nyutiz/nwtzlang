@@ -284,7 +284,7 @@ pub fn make_global_env() -> Environment {
 
     env.set_var(
         "sh".to_string(),
-        mk_fn(Arc::new(move |args, _| {
+        mk_fn(Arc::new(move |args, scope| {
             let mut command_str = String::new();
             for arg in args {
                 command_str.push_str(&match_arg_to_string(&*arg));
@@ -307,7 +307,8 @@ pub fn make_global_env() -> Environment {
             match output {
                 Ok(output) => {
                     if !output.stdout.is_empty() {
-                        print!("{}", String::from_utf8_lossy(&output.stdout));
+                        native_log(format!("{}", String::from_utf8_lossy(&output.stdout)).to_string(), scope);
+
                     }
                     if !output.stderr.is_empty() {
                         eprint!("{}", String::from_utf8_lossy(&output.stderr));
@@ -490,7 +491,7 @@ pub fn make_global_env() -> Environment {
                         let listener = std::net::TcpListener::bind(&addr)
                             .expect("Impossible de binder l'adresse");
 
-                        call_nwtz("log", Some(Vec::from([format!("Serveur démarré sur {}, en attente d'un client...", addr).to_string()])), scope);
+                        native_log(format!("Serveur démarré sur {}, en attente d'un client...", addr).to_string(), scope);
 
                         let mut out:HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
@@ -498,18 +499,17 @@ pub fn make_global_env() -> Environment {
                             .accept()
                             .expect("Échec de l'acceptation d'un client");
 
-                        call_nwtz("log", Some(Vec::from([format!("Client connecté depuis : {}", peer_addr).to_string()])), scope);
+                        native_log(format!("Client connecté depuis : {}", peer_addr).to_string(), scope);
 
                         let mut buffer = [0u8; 512];
                         let n = stream
                             .read(&mut buffer)
                             .expect("Échec de lecture sur le socket");
 
-                        call_nwtz("log", Some(Vec::from([format!("Reçu ({} octets) : {}", n, String::from_utf8_lossy(&buffer[..n])).to_string()])), scope);
+                        native_log(format!("Reçu ({} octets) : {}", n, String::from_utf8_lossy(&buffer[..n])).to_string().to_string(), scope);
 
                         stream.write_all(message.as_bytes()).expect("Échec d'envoi de la réponse");
-                        call_nwtz("log", Some(Vec::from(["Réponse envoyée, fermeture de la connexion.".to_string()])), scope);
-                        //mk_null()
+                        native_log("Réponse envoyée, fermeture de la connexion.".to_string(), scope);
 
                         out.insert("output".to_string(), mk_string(String::from_utf8_lossy(&buffer[..n]).to_string()));
 
@@ -536,7 +536,9 @@ pub fn make_global_env() -> Environment {
     env
 }
 
-
+pub fn native_log(arg: String, scope: &mut Environment){
+    call_nwtz("log", Some(vec![arg]), scope);
+}
 
 #[cfg(test)]
 mod tests {
