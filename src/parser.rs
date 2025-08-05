@@ -438,7 +438,7 @@ impl Parser {
         }
 
         self.expect(Token::RBrace, "Expected '}' to close object literal");
-        self.expect(Token::Semicolon, "Expected ';' after object declaration");
+        //self.expect(Token::Semicolon, "Expected ';' after object declaration");
 
         let obj_literal = Box::from(ObjectLiteral {
             kind: NodeType::ObjectLiteral,
