@@ -11,7 +11,7 @@ pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
     imports: Option<HashMap<String, String>>,
-    main: bool,
+    pub main: bool,
 }
 
 impl Parser {
