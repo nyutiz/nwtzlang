@@ -7,6 +7,7 @@ use crate::lexer::{tokenize, Token};
 use crate::types::ValueType;
 use crate::types::ValueType::{Boolean, Integer, Null, Object};
 
+#[derive(Clone)]
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
@@ -18,10 +19,11 @@ impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, position: 0, imports: None, main: false }
     }
-    
+
     pub fn has_main(&mut self) -> bool {
-        self.produce_ast();
-        self.main
+        let mut p = self.clone();
+        p.produce_ast();
+        p.main
     }
 
     pub fn produce_ast(&mut self) -> Program {
@@ -390,7 +392,7 @@ impl Parser {
             body,
         })
     }
-    
+
 
     fn parse_obj_declaration(&mut self) -> Box<dyn Stmt> {
         self.eat();
