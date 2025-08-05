@@ -8,16 +8,27 @@ use crate::types::{ArrayVal, BooleanVal, FunctionVal, IntegerVal, NativeFnValue,
 use crate::types::ValueType::{Array, Boolean, Function, Integer, Null, Object};
 
 pub fn evaluate_main(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
-    let program_result = evaluate(ast_node.clone(), env);
-
-    if let Ok(program) = ast_node.downcast::<Program>() {
-        let has_main_function = program.body.iter().any(|stmt| {
-            if let Some(func_decl) = stmt.as_any().downcast_ref::<FunctionDeclaration>() {
-                func_decl.name == "main"
-            } else {
-                false
+    if let Ok(program) = ast_node.clone().downcast::<Program>() {
+        let mut has_main_function = false;
+        for stmt in &program.body {
+            match stmt.kind() {
+                NodeType::FunctionDeclaration => {
+                    if let Some(func_decl) = stmt.as_any().downcast_ref::<FunctionDeclaration>() {
+                        if func_decl.name == "main" {
+                            has_main_function = true;
+                        }
+                    }
+                    evaluate(stmt.clone(), env);
+                },
+                NodeType::VariableDeclaration => {
+                    evaluate(stmt.clone(), env);
+                },
+                NodeType::ImportAst => {
+                    evaluate(stmt.clone(), env);
+                },
+                _ => {}
             }
-        });
+        }
 
         if has_main_function {
             let main_identifier = Box::new(IdentifierExpr {
@@ -30,14 +41,31 @@ pub fn evaluate_main(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn 
                 caller: main_identifier,
                 args: Vec::new(),
             });
-
             return evaluate(main_call, env);
+        } else {
+            let mut last_evaluated: Box<dyn RuntimeVal + Send + Sync> = mk_null();
+
+            for stmt in program.body.into_iter().filter(|s| {
+                !(matches!(s.kind(), NodeType::Identifier) &&
+                    s.as_any().downcast_ref::<IdentifierExpr>().unwrap().name == "null")
+            }) {
+                match stmt.kind() {
+                    NodeType::FunctionDeclaration |
+                    NodeType::VariableDeclaration |
+                    NodeType::ImportAst => {
+                    },
+                    _ => {
+                        last_evaluated = evaluate(stmt, env);
+                    }
+                }
+            }
+
+            return last_evaluated;
         }
     }
 
-    program_result
+    evaluate(ast_node, env)
 }
-
 pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
 
     match ast_node.kind() {
