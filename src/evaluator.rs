@@ -7,6 +7,37 @@ use crate::runtime::RuntimeVal;
 use crate::types::{ArrayVal, BooleanVal, FunctionVal, IntegerVal, NativeFnValue, NullVal, ObjectVal, ValueType, RESERVED_NAMES};
 use crate::types::ValueType::{Array, Boolean, Function, Integer, Null, Object};
 
+pub fn evaluate_main(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+    let program_result = evaluate(ast_node.clone(), env);
+
+    if let Ok(program) = ast_node.downcast::<Program>() {
+        let has_main_function = program.body.iter().any(|stmt| {
+            if let Some(func_decl) = stmt.as_any().downcast_ref::<FunctionDeclaration>() {
+                func_decl.name == "main"
+            } else {
+                false
+            }
+        });
+
+        if has_main_function {
+            let main_identifier = Box::new(IdentifierExpr {
+                kind: NodeType::Identifier,
+                name: "main".to_string(),
+            });
+
+            let main_call = Box::new(CallExpr {
+                kind: NodeType::CallExpr,
+                caller: main_identifier,
+                args: Vec::new(),
+            });
+
+            return evaluate(main_call, env);
+        }
+    }
+
+    program_result
+}
+
 pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
 
     match ast_node.kind() {
