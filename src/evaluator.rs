@@ -8,27 +8,35 @@ use crate::types::{ArrayVal, BooleanVal, FunctionVal, IntegerVal, NativeFnValue,
 use crate::types::ValueType::{Array, Boolean, Function, Integer, Null, Object};
 
 pub fn eval(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
-    if let Ok(program) = ast_node.clone().downcast::<Program>() {
-
-        let (declarations, other_statements): (Vec<_>, Vec<_>) = program.body.into_iter().partition(|stmt| {
-            matches!(stmt.kind(),
-                NodeType::FunctionDeclaration |
-                NodeType::VariableDeclaration |
-                NodeType::ImportAst
-            )
-        });
-
+    if let Ok(program) = ast_node.downcast::<Program>() {
         let mut has_main_function = false;
-        for stmt in declarations {
-            if let Some(func_decl) = stmt.as_any().downcast_ref::<FunctionDeclaration>() {
-                if func_decl.name == "main" {
-                    has_main_function = true;
-                }
+
+        // Première passe : évaluer seulement les déclarations (fonctions, variables, imports, objets)
+        for stmt in &program.body {
+            match stmt.kind() {
+                NodeType::FunctionDeclaration => {
+                    if let Some(func_decl) = stmt.as_any().downcast_ref::<FunctionDeclaration>() {
+                        if func_decl.name == "main" {
+                            has_main_function = true;
+                        }
+                    }
+                    evaluate(stmt.clone(), env);
+                },
+                NodeType::VariableDeclaration => {
+                    // Ceci inclut les objets déclarés avec `obj name { ... }`
+                    // car ils sont parsés comme des VariableDeclaration avec une ObjectLiteral
+                    evaluate(stmt.clone(), env);
+                },
+                NodeType::ImportAst => {
+                    evaluate(stmt.clone(), env);
+                },
+                // Ignorer les expressions/statements pour le moment
+                _ => {}
             }
-            evaluate(stmt, env);
         }
 
         if has_main_function {
+            // Créer un appel à la fonction main
             let main_identifier = Box::new(IdentifierExpr {
                 kind: NodeType::Identifier,
                 name: "main".to_string(),
@@ -37,26 +45,40 @@ pub fn eval(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVa
             let main_call = Box::new(CallExpr {
                 kind: NodeType::CallExpr,
                 caller: main_identifier,
-                args: Vec::new(),
+                args: Vec::new(), // main() sans arguments
             });
 
+            // Exécuter l'appel à main
             return evaluate(main_call, env);
         } else {
+            // Si pas de fonction main, exécuter tout le code séquentiellement
             let mut last_evaluated: Box<dyn RuntimeVal + Send + Sync> = mk_null();
 
-            for stmt in other_statements.into_iter().filter(|s| {
+            for stmt in program.body.into_iter().filter(|s| {
                 !(matches!(s.kind(), NodeType::Identifier) &&
                     s.as_any().downcast_ref::<IdentifierExpr>().unwrap().name == "null")
             }) {
-                last_evaluated = evaluate(stmt, env);
+                // Ignorer les déclarations déjà évaluées
+                match stmt.kind() {
+                    NodeType::FunctionDeclaration |
+                    NodeType::VariableDeclaration |
+                    NodeType::ImportAst => {
+                        // Déjà évalués dans la première passe, les ignorer
+                    },
+                    _ => {
+                        last_evaluated = evaluate(stmt, env);
+                    }
+                }
             }
 
             return last_evaluated;
         }
     }
 
+    // Fallback : évaluation normale si ce n'est pas un Program
     evaluate(ast_node, env)
-}pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+}
+pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
 
     match ast_node.kind() {
         NodeType::NumericLiteral => {
