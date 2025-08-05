@@ -11,11 +11,12 @@ pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
     imports: Option<HashMap<String, String>>,
+    main: bool,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, position: 0, imports: None }
+        Self { tokens, position: 0, imports: None, main: false }
     }
 
     pub fn produce_ast(&mut self) -> Program {
@@ -354,6 +355,7 @@ impl Parser {
         self.eat();
 
         let name = if let Token::Identifier(name) = self.eat() {
+            if name.eq("main") { self.main = true; }
             name
         } else {
             panic!("Expected function name following fn keyword, got {:?}", self.at());
@@ -383,6 +385,7 @@ impl Parser {
             body,
         })
     }
+    
 
     fn parse_obj_declaration(&mut self) -> Box<dyn Stmt> {
         self.eat();

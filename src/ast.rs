@@ -45,6 +45,7 @@ impl Program {
             body: Vec::new(),
         }
     }
+
     pub fn merge_imports(mut self) -> Self {
         let mut merged_body = Vec::new();
 
