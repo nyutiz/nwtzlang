@@ -48,7 +48,7 @@ impl Program {
         }
     }
 
-    pub fn has_x(&mut self, name: &str, env: &mut Environment) -> bool {
+    pub fn has_x(&mut self, name: &str, target_type: Option<NodeType>, env: &mut Environment) -> bool {
         if name.is_empty() {
             panic!("Name from has_x is empty");
         }
@@ -58,17 +58,21 @@ impl Program {
         for stmt in &self.body {
             match stmt.kind() {
                 NodeType::FunctionDeclaration => {
-                    if let Some(func_decl) = stmt.as_any().downcast_ref::<FunctionDeclaration>() {
-                        if func_decl.name == name {
-                            found = true;
+                    if target_type.is_none() || target_type == Some(NodeType::FunctionDeclaration) {
+                        if let Some(func_decl) = stmt.as_any().downcast_ref::<FunctionDeclaration>() {
+                            if func_decl.name == name {
+                                found = true;
+                            }
                         }
                     }
                     evaluate(stmt.clone(), env);
                 },
                 NodeType::VariableDeclaration => {
-                    if let Some(var_decl) = stmt.as_any().downcast_ref::<VariableDeclaration>() {
-                        if var_decl.name == name {
-                            found = true;
+                    if target_type.is_none() || target_type == Some(NodeType::VariableDeclaration) {
+                        if let Some(var_decl) = stmt.as_any().downcast_ref::<VariableDeclaration>() {
+                            if var_decl.name == name {
+                                found = true;
+                            }
                         }
                     }
                     evaluate(stmt.clone(), env);
