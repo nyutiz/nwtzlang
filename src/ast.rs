@@ -2,8 +2,6 @@ use std::any::Any;
 use std::fmt::Debug;
 use crate::environment::Environment;
 use crate::evaluator::evaluate;
-use crate::mk_null;
-use crate::runtime::RuntimeVal;
 use crate::types::{FunctionVal, ValueType};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,20 +48,29 @@ impl Program {
         }
     }
 
-    pub fn has_x(&mut self, func_name: &str, env: &mut Environment) -> bool {
-        let mut has_x = false;
+    pub fn has_x(&mut self, name: &str, env: &mut Environment) -> bool {
+        if name.is_empty() {
+            panic!("Name from has_x is empty");
+        }
+
+        let mut found = false;
 
         for stmt in &self.body {
             match stmt.kind() {
                 NodeType::FunctionDeclaration => {
                     if let Some(func_decl) = stmt.as_any().downcast_ref::<FunctionDeclaration>() {
-                        if func_decl.name == func_name {
-                            has_x = true;
+                        if func_decl.name == name {
+                            found = true;
                         }
                     }
                     evaluate(stmt.clone(), env);
                 },
                 NodeType::VariableDeclaration => {
+                    if let Some(var_decl) = stmt.as_any().downcast_ref::<VariableDeclaration>() {
+                        if var_decl.name == name {
+                            found = true;
+                        }
+                    }
                     evaluate(stmt.clone(), env);
                 },
                 NodeType::ImportAst => {
@@ -73,9 +80,8 @@ impl Program {
             }
         }
 
-        has_x
+        found
     }
-
     pub fn merge_imports(mut self) -> Self {
         let mut merged_body = Vec::new();
 
