@@ -23,6 +23,8 @@ Implementation de self - // récupérer l'environnement de la fonction de l'obje
 Boucle While -
 Comparaisons Or, And -
 Exposants ^ ou ** -
+
+
 Remplacer obj par class -
 
 Ajouter un type dans les Fonctions fn(a:Integer){} --
@@ -30,11 +32,12 @@ Ajouter un type dans les Fonctions fn(a:Integer){} --
 
 
 
-
-
 /*
 Idées
 
-Définir un thread avec a = thread::start();
+Changer obj truc {} par truc = {}
+
+var locale a une fonction avec un _ devant
+
 Pouvoir manipuler le thread avec a.stop(); etc ou a.join() qui appellerai le reste de la fonction dans le thread principal
 */

@@ -501,6 +501,12 @@ impl Parser {
                             identifier, expected
                         );
                     }
+                    Token::LBrace if *expected != Object => {
+                        panic!(
+                            "Parser Error: `{}` declared as `{:?}` but got Object",
+                            identifier, expected
+                        );
+                    }
                     _ => {
 
                     }

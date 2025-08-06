@@ -191,7 +191,7 @@ pub fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
             })
             .collect();
 
-        items.sort();
+        items.sort(); // voir pour enregistrer dans l'ordre d'ecriture les properties
         items.join(", ")
     } else if arg.as_any().downcast_ref::<NullVal>().is_some() {
         "null".into()
@@ -546,10 +546,7 @@ pub fn native_log(arg: String, scope: &mut Environment){
 mod tests {
 
     //use crate::{evaluate, make_global_env, tokenize, Parser};
-    #[warn(dead_code)]
-    fn test() {
-        println!("test");
-    }
+    
     
 }
 
