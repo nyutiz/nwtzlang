@@ -544,9 +544,20 @@ pub fn native_log(arg: String, scope: &mut Environment){
 
 #[cfg(test)]
 mod tests {
+    use crate::make_global_env;
+
+    use super::*;
 
     //use crate::{evaluate, make_global_env, tokenize, Parser};
-    
+    #[test]
+    fn test(){
+        let mut env = make_global_env();
+        let tokens = tokenize(fs::read_to_string("code.nwtz").unwrap());
+        let mut parser = Parser::new(tokens);
+        let ast = parser.produce_ast();
+        eval(Box::from(ast), &mut env);
+
+    }
     
 }
 

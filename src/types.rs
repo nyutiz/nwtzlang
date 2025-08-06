@@ -49,8 +49,6 @@ pub struct BooleanVal {
     pub value: bool,
 }
 
-
-
 #[derive(Debug, Clone)]
 pub struct ObjectVal {
     pub r#type: Option<ValueType>,

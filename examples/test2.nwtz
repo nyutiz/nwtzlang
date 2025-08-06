@@ -78,3 +78,53 @@ log(get());
 //system.log(system.config);
 truc.hey("a");
 log( system.getValueType( truc.hey ) );
+
+test=null;
+
+fn __hello__ (){
+    log(45454);
+}
+
+__hello__();
+
+object = 6;
+
+obj truc {
+    name: "How are you today",
+    age: String,
+};
+
+truc.age = object;
+
+log(truc.age);
+
+monTableau = [42, "texte", true, null];
+
+log(monTableau[1]);
+
+monTableau[1] = "Hey";
+log(monTableau[1]);
+
+monTableau[1] = test;
+log(monTableau[1]);
+log(monTableau);
+
+input1: String = input();
+log("Hello ", input1);
+
+input2: String = input();
+log("Hey ", input2);
+
+log("Enter input : ");
+
+dzgefs = input();
+
+if dzgefs == "a" {
+    log("aA");
+} else {
+    log("AFAFA ! ", dzgefs);
+}
+
+s = system.socket("localhost:8080");
+
+log(s);

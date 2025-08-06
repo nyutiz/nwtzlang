@@ -97,7 +97,7 @@ impl Parser {
                 self.eat();
                 Box::from(VariableDeclaration::new(name, None, None))
             }
-            Token::Identifier(_) if *self.peek() == Token::Equal || *self.peek() == Token::Colon => {
+            Token::Identifier(_) if *self.peek() == Token::Equal || *self.peek() == Token::Colon || *self.peek() == Token::RBrace => {
                 self.parse_var_declaration()
             }
             Token::Const => {
@@ -448,6 +448,47 @@ impl Parser {
         Box::from(VariableDeclaration::new(name, Some(obj_literal), Some(Object)))
     }
 
+    fn parse_object_literal(&mut self) -> Box<dyn Stmt> {
+        self.expect(Token::LBrace, "Expected '{' for object literal");
+
+        let mut properties: Vec<Property> = Vec::new();
+
+        while self.not_eof() && *self.at() != Token::RBrace {
+            if *self.at() == Token::Fn {
+                let func = self.parse_func_declaration().downcast::<FunctionDeclaration>()
+                    .expect("Expected FunctionDeclaration");
+
+                properties.push(Property {
+                    kind: NodeType::Property,
+                    key: func.name.clone(),
+                    value: Some(func),
+                });
+            }
+            else if let Token::Identifier(key) = self.eat() {
+                self.expect(Token::Colon, "Expected ':' after property key");
+                let value = self.parse_expr();
+                properties.push(Property {
+                    kind: NodeType::Property,
+                    key,
+                    value: Some(value),
+                });
+            }
+            else {
+                panic!("Expected property key or 'fn' in object literal");
+            }
+
+            if *self.at() == Token::Comma {
+                self.eat();
+            }
+        }
+
+        self.expect(Token::RBrace, "Expected '}' to close object literal");
+
+        Box::from(ObjectLiteral {
+            kind: NodeType::ObjectLiteral,
+            properties,
+        })
+    }
 
     fn parse_var_declaration(&mut self) -> Box<dyn Stmt> {
         let identifier = match self.eat() {
@@ -512,7 +553,14 @@ impl Parser {
                     }
                 }
             }
-            Some(self.parse_expr())
+
+            let parsed_value = if *self.at() == Token::LBrace {
+                self.parse_object_literal()
+            } else {
+                self.parse_expr()
+            };
+
+            Some(parsed_value)
         } else {
             None
         };

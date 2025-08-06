@@ -1,4 +1,4 @@
-## + => Fait, - =>  Pas Fait, -- => Pas prévu ##
+## + => Fait, - =>  Pas Fait, -- => Pas prévu, +- => à moitié ##
 
 Declarations de variables +
 Appel variables +
@@ -18,6 +18,8 @@ Meilleur Log log("Salut ", name) +
 String condition if a == "b" +
 Fonction Native getValueType pour comparer dans des conditions +
 Thread (wait -> attend la fin de tous les threads) +
+Changer obj truc {} par truc = {} +- (deux fonctionnent)
+
 
 Implementation de self - // récupérer l'environnement de la fonction de l'objet et resolve dessus 
 Boucle While -
@@ -25,7 +27,7 @@ Comparaisons Or, And -
 Exposants ^ ou ** -
 
 
-Remplacer obj par class -
+Remplacer obj par class --
 
 Ajouter un type dans les Fonctions fn(a:Integer){} --
 
@@ -35,7 +37,6 @@ Ajouter un type dans les Fonctions fn(a:Integer){} --
 /*
 Idées
 
-Changer obj truc {} par truc = {}
 
 var locale a une fonction avec un _ devant
 
