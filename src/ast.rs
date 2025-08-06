@@ -1,5 +1,9 @@
 use std::any::Any;
 use std::fmt::Debug;
+use crate::environment::Environment;
+use crate::evaluator::evaluate;
+use crate::mk_null;
+use crate::runtime::RuntimeVal;
 use crate::types::{FunctionVal, ValueType};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,6 +48,32 @@ impl Program {
             kind: NodeType::Program,
             body: Vec::new(),
         }
+    }
+
+    pub fn has_x(&mut self, func_name: &str, env: &mut Environment) -> bool {
+        let mut has_x = false;
+
+        for stmt in &self.body {
+            match stmt.kind() {
+                NodeType::FunctionDeclaration => {
+                    if let Some(func_decl) = stmt.as_any().downcast_ref::<FunctionDeclaration>() {
+                        if func_decl.name == func_name {
+                            has_x = true;
+                        }
+                    }
+                    evaluate(stmt.clone(), env);
+                },
+                NodeType::VariableDeclaration => {
+                    evaluate(stmt.clone(), env);
+                },
+                NodeType::ImportAst => {
+                    evaluate(stmt.clone(), env);
+                },
+                _ => {}
+            }
+        }
+
+        has_x
     }
 
     pub fn merge_imports(mut self) -> Self {

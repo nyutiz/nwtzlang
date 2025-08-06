@@ -1,6 +1,8 @@
-# ‼️ THERE IS MANY BUGS WHICH I WILL SOLVE OR YOU CAN BUT DONT USE IT **NOW** IN YOUR PROJECT ‼️
+## ‼️ THERE IS MANY BUGS WHICH I WILL SOLVE OR YOU CAN BUT DONT USE IT **NOW** IN YOUR PROJECT ‼️
 
-## (Honestly I publish it just to use it in another project which is (for now) private, a lot of features a not implemented)
+### (Honestly I publish it just to use it in another project which is (for now) private, a lot of features a not implemented)
+
+### Maybe I will make a real doc one day... 
 
 # A New Interpreted Programming Language called NWTZ lang
 

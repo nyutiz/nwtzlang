@@ -182,15 +182,17 @@ pub fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
     } else if let Some(fu) = arg.as_any().downcast_ref::<FunctionVal>() {
         format!("{:?}", fu.body)
     } else if let Some(ob) = arg.as_any().downcast_ref::<ObjectVal>() {
-        ob.properties
+        let mut items: Vec<_> = ob.properties
             .lock().unwrap()
             .iter()
             .map(|(key, val)| {
                 let v = match_arg_to_string(val.as_ref());
                 format!("{}: {{ {} }}", key, v)
             })
-            .collect::<Vec<_>>()
-            .join(", ")
+            .collect();
+
+        items.sort();
+        items.join(", ")
     } else if arg.as_any().downcast_ref::<NullVal>().is_some() {
         "null".into()
     } else {
