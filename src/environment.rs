@@ -28,6 +28,24 @@ impl Environment {
         }
     }
 
+    pub fn find_var_in_chain(&mut self, var_name: &str) -> Option<&mut Environment> {
+        if self.variables.contains_key(var_name) {
+            return Some(self);
+        }
+        if let Some(parent) = &mut self.parent {
+            return parent.find_var_in_chain(var_name);
+        }
+        None
+    }
+
+    pub fn get_global_env(&mut self) -> &mut Environment {
+        if self.parent.is_none() {
+            self
+        } else {
+            self.parent.as_mut().unwrap().get_global_env()
+        }
+    }
+
     pub fn set_var(&mut self, var_name: String, new_value: Box<dyn RuntimeVal + Send + Sync>, declared_type: Option<ValueType>) -> Box<dyn RuntimeVal + Send + Sync> {
         // Type checking pour les déclarations
         if let Some(ty) = declared_type.clone() {
@@ -71,8 +89,35 @@ impl Environment {
             return new_value;
         }
 
-        if let Some(parent) = &mut self.parent {
-            return parent.assign_var(var_name, new_value);
+        if let Some(env_with_var) = self.find_var_in_chain(&var_name) {
+            if let Some(Some(expected)) = env_with_var.var_types.get(&var_name) {
+                let actual = new_value.value_type()
+                    .expect("RuntimeVal should always have a type");
+                if &actual != expected {
+                    panic!(
+                        "Type error: variable `{}` declared as `{:?}` but assigned `{:?}`",
+                        var_name, expected, actual
+                    );
+                }
+            }
+            env_with_var.variables.insert(var_name, new_value.clone());
+            return new_value;
+        }
+
+        let global_env = self.get_global_env();
+        if global_env.variables.contains_key(&var_name) {
+            if let Some(Some(expected)) = global_env.var_types.get(&var_name) {
+                let actual = new_value.value_type()
+                    .expect("RuntimeVal should always have a type");
+                if &actual != expected {
+                    panic!(
+                        "Type error: variable `{}` declared as `{:?}` but assigned `{:?}`",
+                        var_name, expected, actual
+                    );
+                }
+            }
+            global_env.variables.insert(var_name, new_value.clone());
+            return new_value;
         }
 
         panic!("Cannot assign to undeclared variable '{}'", var_name);

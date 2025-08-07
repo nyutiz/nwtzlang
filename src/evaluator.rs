@@ -491,7 +491,7 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
 
         return result;
     }
-    
+
     panic!("Cannot call value that is not a function: {:?}", callee);
 }
 
