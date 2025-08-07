@@ -9,3 +9,4 @@ log(truc);
 
 
 log(truc);
+log(time());

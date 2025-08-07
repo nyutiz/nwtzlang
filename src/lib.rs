@@ -210,6 +210,8 @@ pub fn drive_stream(mut rx: UnboundedReceiver<String>) {
 
 pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment, ) -> Option<Box<dyn RuntimeVal + Send + Sync>> {
 
+
+
     let arg_vals: Vec<Box<dyn RuntimeVal + Send + Sync>> = args
         .unwrap_or_default()
         .into_iter()
