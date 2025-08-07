@@ -26,6 +26,7 @@ Boucle While -
 Comparaisons Or, And -
 Exposants ^ ou ** -
 trier les propriétés dans l'ordre d'assignement -
+gerer les errerus avec l'env et call_nwtz
 
 Remplacer obj par class --
 Ajouter un type dans les Fonctions fn(a:Integer){} --

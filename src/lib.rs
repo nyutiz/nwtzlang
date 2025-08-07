@@ -23,7 +23,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use crate::ast::{NodeType, StringVal};
 use crate::environment::Environment;
-use crate::evaluator::{eval};
+use crate::evaluator::{eval, evaluate};
 use crate::lexer::tokenize;
 use crate::parser::Parser;
 use crate::runtime::RuntimeVal;
@@ -208,10 +208,7 @@ pub fn drive_stream(mut rx: UnboundedReceiver<String>) {
     });
 }
 
-pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment, ) -> Option<Box<dyn RuntimeVal + Send + Sync>> {
-
-
-
+pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment) -> Option<Box<dyn RuntimeVal + Send + Sync>> {
     let arg_vals: Vec<Box<dyn RuntimeVal + Send + Sync>> = args
         .unwrap_or_default()
         .into_iter()
@@ -225,22 +222,14 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment,
 
     match v.value_type().unwrap() {
         NativeFn => {
-            let native = v
-                .as_any()
-                .downcast_ref::<NativeFnValue>()
-                .expect("Expected a NativeFnValue");
+            let native = v.as_any().downcast_ref::<NativeFnValue>().expect("Expected a NativeFnValue");
             let res = (native.call)(arg_vals, scope);
             Some(res)
         }
         Function => {
-            let f = v
-                .as_any()
-                .downcast_ref::<FunctionVal>()
-                .expect("Expected a FunctionVal");
-
+            let f = v.as_any().downcast_ref::<FunctionVal>().expect("Expected a FunctionVal");
             let decl_env = f.declaration_env.lock().unwrap();
-            let mut local_scope =
-                Environment::new(Some(Box::new(decl_env.clone())));
+            let mut local_scope = Environment::new(Some(Box::new(decl_env.clone())));
 
             if arg_vals.len() != f.parameters.len() {
                 panic!(
@@ -257,7 +246,7 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment,
 
             let mut result: Box<dyn RuntimeVal + Send + Sync> = mk_null();
             for stmt in f.body.iter() {
-                result = eval(stmt.clone(), &mut local_scope);
+                result = evaluate(stmt.clone(), &mut local_scope);
             }
 
             Some(result)
