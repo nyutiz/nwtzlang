@@ -234,8 +234,7 @@ pub fn eval_array_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
 
 
 pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal + Send + Sync> {
-    let assignment = node
-        .downcast::<AssignmentExpr>()
+    let assignment = node.downcast::<AssignmentExpr>()
         .expect("Expected an AssignmentExpr node");
 
     let new_value = evaluate(
@@ -246,9 +245,7 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn 
     if let Some(ident) = assignment.assigne.as_any().downcast_ref::<IdentifierExpr>() {
         let var_name = ident.name.clone();
 
-        let result = env.set_var(var_name, new_value.clone(), None);
-
-        result
+        env.assign_var(var_name, new_value.clone())
     }
     else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
         let object_val = evaluate(member.object.clone(), env);
@@ -295,18 +292,16 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn 
 
 
 pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal + Send + Sync> {
-    let var_declaration = declaration
-        .downcast::<VariableDeclaration>()
+    let var_declaration = declaration.downcast::<VariableDeclaration>()
         .expect("Expected a VariableDeclaration node");
 
     let declared_type = var_declaration.r#type.clone();
-
     let value = match var_declaration.value {
         Some(expr) => evaluate(expr, env),
         None => mk_null(),
     };
 
-    env.set_var(var_declaration.name.clone(), value.clone(), declared_type)
+    env.set_var(var_declaration.name.clone(), value, declared_type)
 }
 pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
     let member = ast_node.downcast::<MemberExpr>()
@@ -473,7 +468,8 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
     }
 
     if let Some(func) = callee.as_any().downcast_ref::<FunctionVal>() {
-        let mut scope = Environment::new(Some(Box::new(env.clone())));
+        let decl_env = func.declaration_env.lock().unwrap().clone();
+        let mut scope = Environment::new(Some(Box::new(decl_env)));
 
         if args.len() != func.parameters.len() {
             panic!(
@@ -495,7 +491,7 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
 
         return result;
     }
-
+    
     panic!("Cannot call value that is not a function: {:?}", callee);
 }
 
