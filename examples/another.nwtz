@@ -1,0 +1,26 @@
+
+hello = "AGAGQGAFVA A";
+
+fn aaaa(){
+    log("hey");
+    log(a*a);
+}
+
+
+a = 5;
+aaaa();
+
+log(5*5);
+log(hello);
+
+hello = 5*9 + a;
+log(hello + 50);
+log(a*a);
+
+
+fn tim(){
+    log(time());
+}
+
+tim();
+

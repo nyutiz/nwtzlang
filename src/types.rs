@@ -70,12 +70,12 @@ pub struct FunctionVal {
 pub type FunctionCall =
 Arc<dyn Fn(Vec<Box<dyn RuntimeVal + Send + Sync>>, &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> + Send + Sync>;
 #[derive(Clone)]
-pub struct NativeFnValue {
+pub struct NativeFnVal {
     pub r#type: Option<ValueType>,
     pub call: FunctionCall,
 }
 
-impl Debug for NativeFnValue {
+impl Debug for NativeFnVal {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "< fn >")
     }

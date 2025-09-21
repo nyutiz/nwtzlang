@@ -39,3 +39,31 @@ var locale a une fonction avec un _ devant
 
 Pouvoir manipuler le thread avec a.stop(); etc ou a.join() qui appellerai le reste de la fonction dans le thread principal
 */
+
+
+Bug
+/*
+
+
+a = 5;
+
+aaaa();
+
+log(a*a);
+
+fn aaaa(){
+    log("hey");
+    log(a*a);
+}
+
+=> cargo run -- -r examples/another.nwtz
+=>     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+=>      Running `target\debug\nwtzlang.exe -r examples/another.nwtz`
+=> hey
+=>
+=> thread 'main' panicked at src\environment.rs:135:13:
+=> Cannot resolve 'a' as it does not exist.
+=> note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+=> error: process didn't exit successfully: `target\debug\nwtzlang.exe -r examples/another.nwtz` (exit code: 101)
+
+*/

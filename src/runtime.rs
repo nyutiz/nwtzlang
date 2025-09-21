@@ -42,7 +42,7 @@ impl RuntimeVal for ArrayVal {
     }
 }
 
-impl RuntimeVal for crate::types::NativeFnValue {
+impl RuntimeVal for crate::types::NativeFnVal {
     fn value_type(&self) -> Option<ValueType> {
         Option::from(NativeFn)
     }

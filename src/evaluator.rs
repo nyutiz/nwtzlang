@@ -4,7 +4,7 @@ use crate::ast::{ArrayLiteral, AssignmentExpr, BinaryExpr, BooleanLiteral, CallE
 use crate::environment::Environment;
 use crate::mk_null;
 use crate::runtime::RuntimeVal;
-use crate::types::{ArrayVal, BooleanVal, FunctionVal, IntegerVal, NativeFnValue, NullVal, ObjectVal, ValueType, RESERVED_NAMES};
+use crate::types::{ArrayVal, BooleanVal, FunctionVal, IntegerVal, NativeFnVal, NullVal, ObjectVal, ValueType, RESERVED_NAMES};
 use crate::types::ValueType::{Array, Boolean, Function, Integer, Null, Object};
 
 pub fn eval(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
@@ -463,7 +463,7 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
 
     let callee = evaluate(call.caller, env);
 
-    if let Some(native) = callee.as_any().downcast_ref::<NativeFnValue>() {
+    if let Some(native) = callee.as_any().downcast_ref::<NativeFnVal>() {
         return (native.call)(args, env);
     }
 

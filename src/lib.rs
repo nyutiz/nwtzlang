@@ -11,7 +11,7 @@ pub mod thread;
 use crate::types::{ArrayVal, BooleanVal, FunctionVal, IntegerVal, NullVal, ObjectVal, ValueType};
 use crate::types::ValueType::{Array, Boolean, Integer, Null, Object};
 use crate::types::FunctionCall;
-use crate::types::NativeFnValue;
+use crate::types::NativeFnVal;
 use crate::types::ValueType::NativeFn;
 use crate::types::ValueType::Function;
 
@@ -49,8 +49,8 @@ pub fn mk_bool(b: bool) -> Box<BooleanVal> {
     Box::from(BooleanVal{ r#type: Option::from(Boolean), value: b })
 }
 
-pub fn mk_fn(call: FunctionCall) -> Box<NativeFnValue> {
-    Box::from(NativeFnValue{
+pub fn mk_fn(call: FunctionCall) -> Box<NativeFnVal> {
+    Box::from(NativeFnVal {
         r#type: Option::from(NativeFn),
         call
     })
@@ -222,7 +222,7 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment)
 
     match v.value_type().unwrap() {
         NativeFn => {
-            let native = v.as_any().downcast_ref::<NativeFnValue>().expect("Expected a NativeFnValue");
+            let native = v.as_any().downcast_ref::<NativeFnVal>().expect("Expected a NativeFnValue");
             let res = (native.call)(arg_vals, scope);
             Some(res)
         }
