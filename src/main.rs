@@ -6,6 +6,7 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::process;
+use std::time::Instant;
 use nwtzlang::environment::Environment;
 use nwtzlang::types::ValueType;
 
@@ -74,6 +75,8 @@ async fn main() {
         eprintln!("No input provided.");
         print_usage_and_exit(1);
     }
+    
+    let start = Instant::now();
 
     let tokens = tokenize(input);
     let mut parser = Parser::new(tokens);
@@ -87,6 +90,8 @@ async fn main() {
     if !matches!(result.value_type(), Some(ValueType::Null)) {
         println!("{:#?}", result);
     }
+    
+    println!("Elapsed time: {:#?}", start.elapsed());
 }
 
 fn print_usage_and_exit(code: i32) -> ! {

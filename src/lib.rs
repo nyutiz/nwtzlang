@@ -402,8 +402,8 @@ pub fn make_global_env() -> Environment {
 
                             mk_string(format!("{}", func_name))
                         }
-                        _ => {
-                            panic!("thread.start: argument doit être une fonction");
+                        e => {
+                            panic!("thread.start: argument doit être une fonction {:?}", e);
                         }
                     }
                 })),
