@@ -255,6 +255,12 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment)
     }
 }
 
+pub fn add_nwtz_code(code: String, environment: Environment) -> Environment{
+
+    // cette fonction devrait prendre du code nwtz en parametre, ainsi que l'env et l'ajouter à l'ast
+
+    todo!()
+}
 
 
 pub fn make_global_env() -> Environment {

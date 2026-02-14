@@ -1,0 +1,21 @@
+obj ui {
+    fn label(text){
+        log(text);
+    },
+    fn button(text, function){
+        log("rzgzddsgdsfsf");
+        function();
+    }
+}
+
+obj render {
+    title: String,
+    fn test(){
+        ui.label("Hey");
+        ui.button("Hello world", fn clicked(){
+            log("Test");
+        });
+    },
+};
+
+render.test()
