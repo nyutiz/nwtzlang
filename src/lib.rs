@@ -110,7 +110,7 @@ register_natives!(
 );
 
 
-pub fn interpreter_to_vec_string(env: &mut Environment, input: String) -> Vec<String> {
+pub fn interpreter_to_vec_string(mut env: Environment, input: String) -> Vec<String> {
     let output = Arc::new(Mutex::new(Vec::<String>::new()));
     let output_for_native = output.clone();
 
@@ -129,12 +129,12 @@ pub fn interpreter_to_vec_string(env: &mut Environment, input: String) -> Vec<St
     let tokens = tokenize(input);
     let mut parser = Parser::new(tokens);
     let ast = parser.produce_ast();
-    let _ = eval(Box::new(ast), env);
+    let _ = eval(Box::new(ast), &mut env);
     let o = output.lock().unwrap().clone(); 
     o
 }
 
-pub fn interpreter_to_stream(env: &mut Environment, input: String, ) -> UnboundedReceiver<String> {
+pub fn interpreter_to_stream(mut env: Environment, input: String, ) -> UnboundedReceiver<String> {
     let (tx, rx): (UnboundedSender<String>, UnboundedReceiver<String>) = unbounded_channel();
 
     let tx_for_native = tx.clone();
