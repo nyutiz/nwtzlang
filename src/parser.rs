@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use strum::IntoEnumIterator;
-use crate::ast::{ArrayLiteral, AssignmentExpr, BinaryExpr, BooleanLiteral, CallExpr, ForStatement, FunctionDeclaration, IdentifierExpr, IfStatement, ImportAst, LiteralExpr, MemberExpr, NodeType, NullLiteral, ObjectLiteral, Program, Property, Stmt, StringVal, VariableDeclaration};
+use crate::ast::{ArrayLiteral, AssignmentExpr, BinaryExpr, BooleanLiteral, CallExpr, ConstDeclaration, ForStatement, FunctionDeclaration, IdentifierExpr, IfStatement, ImportAst, LiteralExpr, MemberExpr, NodeType, NullLiteral, ObjectLiteral, Program, Property, Stmt, StringVal, VariableDeclaration};
 use crate::ast::NodeType::Identifier;
 use crate::lexer::{tokenize, Token};
 use crate::types::ValueType;
@@ -102,7 +102,7 @@ impl Parser {
             }
             Token::Const => {
                 // Faire en sorte que Const soit obligatoirement définie avec un Valuetype
-                todo!()
+                self.parse_const_declaration()
                 //self.parse_variable_declaration()
             }
             Token::Fn => {
@@ -496,6 +496,7 @@ impl Parser {
             token => panic!("Parser Error: Expected identifier, got {:?}", token),
         };
 
+
         let var_type = if *self.at() == Token::Colon {
             self.eat();
             let ty_name = if let Token::Identifier(name) = self.eat() {
@@ -569,6 +570,93 @@ impl Parser {
 
         Box::from(VariableDeclaration {
             kind: NodeType::VariableDeclaration,
+            r#type: var_type,
+            name: identifier,
+            value,
+        })
+    }
+
+    fn parse_const_declaration(&mut self) -> Box<dyn Stmt> {
+        self.eat();
+        let identifier = match self.eat() {
+            Token::Identifier(name) => name,
+            token => panic!("Parser Error: Expected identifier, got {:?}", token),
+        };
+
+        let var_type = if *self.at() == Token::Colon {
+            self.eat();
+            let ty_name = if let Token::Identifier(name) = self.eat() {
+                name
+            } else {
+                panic!("Parser Error: Expected type name after `:`, got {:?}", self.at());
+            };
+            let vt = ValueType::iter()
+                .find(|vt| format!("{:?}", vt) == ty_name)
+                .unwrap_or_else(|| panic!("Unknown type literal `{}`", ty_name));
+
+            vt
+        } else {
+            panic!(
+                "Parser Error: Const need to have a type"
+            );
+        };
+
+
+        let value = if *self.at() == Token::Equal {
+            self.eat();
+
+            let expected = var_type.clone();
+            match self.at() {
+                Token::StringLiteral(_) if expected != ValueType::String => {
+                    panic!(
+                        "Parser Error: `{}` declared as `{:?}` but got a String",
+                        identifier, expected
+                    );
+                }
+                Token::Integer(_) if expected != Integer => {
+                    panic!(
+                        "Parser Error: `{}` declared as `{:?}` but got an Integer",
+                        identifier, expected
+                    );
+                }
+                Token::True | Token::False if expected != Boolean => {
+                    panic!(
+                        "Parser Error: `{}` declared as `{:?}` but got a Boolean",
+                        identifier, expected
+                    );
+                }
+                Token::Null if expected != Null => {
+                    panic!(
+                        "Parser Error: `{}` declared as `{:?}` but got Null",
+                        identifier, expected
+                    );
+                }
+                Token::LBrace if expected != Object => {
+                    panic!(
+                        "Parser Error: `{}` declared as `{:?}` but got Object",
+                        identifier, expected
+                    );
+                }
+                _ => {
+
+                }
+            }
+
+            let parsed_value = if *self.at() == Token::LBrace {
+                self.parse_object_literal()
+            } else {
+                self.parse_expr()
+            };
+
+            Some(parsed_value)
+        } else {
+            None
+        };
+
+        self.expect(Token::Semicolon, "Expected semicolon after variable declaration");
+
+        Box::from(ConstDeclaration {
+            kind: NodeType::ConstDeclaration,
             r#type: var_type,
             name: identifier,
             value,

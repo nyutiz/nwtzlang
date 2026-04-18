@@ -47,12 +47,10 @@ impl Environment {
     }
 
     pub fn set_var(&mut self, var_name: String, new_value: Box<dyn RuntimeVal + Send + Sync>, declared_type: Option<ValueType>) -> Box<dyn RuntimeVal + Send + Sync> {
-        // Type checking pour les déclarations
         if let Some(ty) = declared_type.clone() {
             self.var_types.insert(var_name.clone(), Some(ty));
         }
 
-        // Si la variable existe déjà dans cet environnement, on la met à jour
         if self.var_types.contains_key(&var_name) {
             if let Some(expected) = self.var_types.get(&var_name).unwrap() {
                 let actual = new_value.value_type()
@@ -68,7 +66,6 @@ impl Environment {
             return new_value;
         }
 
-        // Sinon, c'est une nouvelle déclaration dans cet environnement
         self.var_types.insert(var_name.clone(), declared_type);
         self.variables.insert(var_name, new_value.clone());
         new_value

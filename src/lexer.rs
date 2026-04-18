@@ -10,30 +10,18 @@ pub enum Token {
     Obj,
     #[token("fn")]
     Fn,
-    #[token("impl")]
-    Impl,
+    
     #[token("if")]
     If,
     #[token("else")]
     Else,
-    //#[token("and")]
-    //And,
-    //#[token("or")]
-    //Or,
-    //#[token("whl")]
-    //While,
-    //#[token("in")]
-    //In,
+    
     #[token("for")]
     For,
     #[token("const")]
     Const,
-    #[token("self")]
-    SelfKw,
-    //#[token("async")]
-    //Async,
-    //#[token("await")]
-    //Await,
+    
+    
     #[token("+")]
     Plus,
     #[token("-")]
@@ -87,6 +75,26 @@ pub enum Token {
     #[token("null")]
     Null,
     EOF,
+    
+    // To implement
+    
+    //#[token("self")]
+    //SelfKw,
+    //#[token("and")]
+    //And,
+    //#[token("or")]
+    //Or,
+    //#[token("whl")]
+    //While,
+    //#[token("in")]
+    //In,
+    //#[token("impl")]
+    //Impl,
+    //#[token("async")]
+    //Async,
+    //#[token("await")]
+    //Await,
+    
 }
 
 pub fn tokenize(source: String) -> Vec<Token> {

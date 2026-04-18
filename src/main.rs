@@ -118,6 +118,10 @@ async fn run_repl(env: &mut Environment) {
             break;
         }
 
+        //if line.starts_with("eval:"){
+        //
+        //}
+
         let tokens = tokenize(line.clone());
         let mut parser = Parser::new(tokens);
         let ast = parser.produce_ast();

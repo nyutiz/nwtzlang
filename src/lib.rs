@@ -91,8 +91,6 @@ pub fn native_fs_read(args: Vec<Box<dyn RuntimeVal + Send + Sync>>, _env: &mut E
     })
 }
 
-
-
 macro_rules! register_natives {
     ( $($name:expr => $func:path),* $(,)? ) => {
         pub fn native_registry() -> HashMap<&'static str, FunctionCall> {
@@ -108,6 +106,8 @@ macro_rules! register_natives {
 register_natives!(
     "_fs_read" => native_fs_read,
 );
+
+
 
 
 pub fn interpreter_to_vec_string(mut env: Environment, input: String) -> Vec<String> {
@@ -255,7 +255,7 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment)
     }
 }
 
-pub fn add_nwtz_code(code: String, environment: Environment) -> Environment{
+pub fn add_nwtz_code(_code: String, _environment: Environment) -> Environment{
 
     // cette fonction devrait prendre du code nwtz en parametre, ainsi que l'env et l'ajouter à l'ast
 

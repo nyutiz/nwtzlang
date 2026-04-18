@@ -1,0 +1,9 @@
+const a:Integer = 5;
+log(a*a);
+
+aaaa();
+
+fn aaaa(){
+    log("hey");
+    log(a*a);
+}

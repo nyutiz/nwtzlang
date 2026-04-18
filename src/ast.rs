@@ -10,6 +10,7 @@ pub enum NodeType {
     // Statements
     Program,
     VariableDeclaration,
+    ConstDeclaration,
     FunctionDeclaration,
     ImportAst,
     IfStatement,
@@ -230,6 +231,15 @@ pub struct Program {
 pub struct VariableDeclaration {
     pub kind: NodeType,
     pub r#type: Option<ValueType>,
+    pub name: String,
+    pub value: Option<Box<dyn Stmt>>,
+}
+
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct ConstDeclaration {
+    pub kind: NodeType,
+    pub r#type: ValueType,
     pub name: String,
     pub value: Option<Box<dyn Stmt>>,
 }
@@ -470,6 +480,18 @@ impl Stmt for Program {
     }
 }
 impl Stmt for VariableDeclaration {
+    fn kind(&self) -> NodeType {
+        self.kind.clone()
+    }
+    fn value(&self) -> Option<String> {
+        None
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Stmt for ConstDeclaration {
     fn kind(&self) -> NodeType {
         self.kind.clone()
     }

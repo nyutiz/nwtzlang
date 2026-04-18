@@ -28,7 +28,7 @@ Exposants ^ ou ** -
 trier les propriétés dans l'ordre d'assignement -
 gerer les errerus avec l'env et call_nwtz
 Ajouter un type dans les Fonctions fn(a:Integer){} -
-
+Remplacer tous les panics de l'eval -
 
 Remplacer obj par class --
 

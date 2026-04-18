@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::ast::{ArrayLiteral, AssignmentExpr, BinaryExpr, BooleanLiteral, CallExpr, ForStatement, FunctionDeclaration, IdentifierExpr, IfStatement, ImportAst, LiteralExpr, MemberExpr, NodeType, ObjectLiteral, Program, Property, Stmt, StringVal, VariableDeclaration};
+use crate::ast::{ArrayLiteral, AssignmentExpr, BinaryExpr, BooleanLiteral, CallExpr, ConstDeclaration, ForStatement, FunctionDeclaration, IdentifierExpr, IfStatement, ImportAst, LiteralExpr, MemberExpr, NodeType, ObjectLiteral, Program, Property, Stmt, StringVal, VariableDeclaration};
 use crate::environment::Environment;
 use crate::mk_null;
 use crate::runtime::RuntimeVal;
@@ -31,7 +31,7 @@ pub fn eval(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVa
             }
         }
 
-        if has_main_function {
+        return if has_main_function {
             let main_identifier = Box::new(IdentifierExpr {
                 kind: NodeType::Identifier,
                 name: "main".to_string(),
@@ -43,7 +43,7 @@ pub fn eval(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVa
                 args: Vec::new(),
             });
 
-            return evaluate(main_call, env);
+            evaluate(main_call, env)
         } else {
             let mut last_evaluated: Box<dyn RuntimeVal + Send + Sync> = mk_null();
 
@@ -58,7 +58,7 @@ pub fn eval(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVa
                 last_evaluated = evaluate(stmt, env);
             }
 
-            return last_evaluated;
+            last_evaluated
         }
     }
 
@@ -93,6 +93,9 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
         },
         NodeType::VariableDeclaration => {
             eval_var_declaration(ast_node, env)
+        },
+        NodeType::ConstDeclaration => {
+            eval_const_declaration(ast_node, env)
         },
         NodeType::StringLiteral => {
             let str = ast_node.as_any().downcast_ref::<StringVal>()
@@ -290,6 +293,18 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn 
 }
 
 
+pub fn eval_const_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal + Send + Sync>{
+    let const_declaration = declaration.downcast::<ConstDeclaration>()
+        .expect("Expected a ConstDeclaration node");
+
+    let declared_type = const_declaration.r#type.clone();
+    let value = match const_declaration.value {
+        Some(expr) => evaluate(expr, env),
+        None => mk_null(),
+    };
+
+    env.set_var(const_declaration.name.clone(), value, Some(declared_type))
+}
 
 pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal + Send + Sync> {
     let var_declaration = declaration.downcast::<VariableDeclaration>()
