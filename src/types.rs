@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use crate::ast::Stmt;
-use crate::environment::Environment;
+use crate::environment::{Environment, SharedEnv};
 use crate::runtime::RuntimeVal;
 
 pub static RESERVED_NAMES: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -63,7 +63,7 @@ pub struct FunctionVal {
 }
 
 pub type FunctionCall =
-Arc<dyn Fn(Vec<Box<dyn RuntimeVal + Send + Sync>>, &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> + Send + Sync>;
+Arc<dyn Fn(Vec<Box<dyn RuntimeVal + Send + Sync>>, &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> + Send + Sync>;
 #[derive(Clone)]
 pub struct NativeFnVal {
     pub r#type: Option<ValueType>,

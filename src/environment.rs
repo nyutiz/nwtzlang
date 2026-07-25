@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use crate::runtime::RuntimeVal;
 use crate::types::ValueType;
 
+
 pub type SharedEnv = Arc<Mutex<Environment>>;
 
 #[derive(Debug, Clone)]

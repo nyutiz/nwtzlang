@@ -2,8 +2,6 @@
 hello = "AGAGQGAFVA A";
 
 
-
-
 log(5*5);
 log(hello);
 
@@ -18,7 +16,7 @@ tim();
 
 fn a(){
     log("hello world");
-        sleep(3);
+    sleep(3);
 }
 
 thread.start(a);

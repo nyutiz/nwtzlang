@@ -29,8 +29,6 @@ use crate::parser::Parser;
 use crate::runtime::RuntimeVal;
 use crate::thread::ThreadManager;
 
-
-
 pub fn mk_number<T: Into<f64>>(number: T) -> Box<IntegerVal> {
     Box::from(IntegerVal {
         r#type: Option::from(Integer),
@@ -76,7 +74,7 @@ pub fn mk_object(properties: HashMap<String, Box<dyn RuntimeVal + Send + Sync>>)
     })
 }
 
-pub fn native_fs_read(args: Vec<Box<dyn RuntimeVal + Send + Sync>>, _env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn native_fs_read(args: Vec<Box<dyn RuntimeVal + Send + Sync>>, _env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     let path = args.into_iter().next()
         .and_then(|v| v.as_any().downcast_ref::<StringVal>().map(|s| s.value.clone()))
         .expect("_fs_read attend un string");
@@ -205,7 +203,7 @@ pub fn drive_stream(mut rx: UnboundedReceiver<String>) {
     });
 }
 
-pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment) -> Option<Box<dyn RuntimeVal + Send + Sync>> {
+pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &SharedEnv) -> Option<Box<dyn RuntimeVal + Send + Sync>> {
     let arg_vals: Vec<Box<dyn RuntimeVal + Send + Sync>> = args
         .unwrap_or_default()
         .into_iter()
@@ -215,7 +213,7 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment)
         })
         .collect();
 
-    let v = scope.lookup_var(name);
+    let v = scope.lock().unwrap().lookup_var(name);
 
     match v.value_type().unwrap() {
         NativeFn => {
@@ -529,7 +527,7 @@ pub fn make_global_env() -> Environment {
     env
 }
 
-pub fn native_log(arg: String, scope: &mut Environment){
+pub fn native_log(arg: String, scope: &SharedEnv){
     call_nwtz("log", Some(vec![arg]), scope);
 }
 

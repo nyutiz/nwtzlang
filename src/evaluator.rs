@@ -472,7 +472,8 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVa
     let callee = evaluate(call.caller, env);
 
     if let Some(native) = callee.as_any().downcast_ref::<NativeFnVal>() {
-        return (native.call)(args, &mut env.lock().unwrap());
+
+        return (native.call)(args, env);
     }
 
     if let Some(func) = callee.as_any().downcast_ref::<FunctionVal>() {
