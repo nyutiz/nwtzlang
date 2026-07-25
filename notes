@@ -19,12 +19,12 @@ String condition if a == "b" +
 Fonction Native getValueType pour comparer dans des conditions +
 Thread (wait -> attend la fin de tous les threads) +
 Changer obj truc {} par truc = {} +- (deux fonctionnent)
+Exposants ** +
 
 
 Implementation de self - // récupérer l'environnement de la fonction de l'objet et resolve dessus 
 Boucle While -
 Comparaisons Or, And -
-Exposants ^ ou ** -
 trier les propriétés dans l'ordre d'assignement -
 gerer les errerus avec l'env et call_nwtz
 Ajouter un type dans les Fonctions fn(a:Integer){} -
@@ -44,7 +44,6 @@ Pouvoir manipuler le thread avec a.stop(); etc ou a.join() qui appellerai le res
 
 Bug
 /*
-
 
 a = 5;
 
@@ -67,4 +66,5 @@ fn aaaa(){
 => note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 => error: process didn't exit successfully: `target\debug\nwtzlang.exe -r examples/another.nwtz` (exit code: 101)
 
+résolu : désactiver l'ordre dans produce ast
 */

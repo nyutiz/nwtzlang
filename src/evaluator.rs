@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use crate::ast::{ArrayLiteral, AssignmentExpr, BinaryExpr, BooleanLiteral, CallExpr, ConstDeclaration, ForStatement, FunctionDeclaration, IdentifierExpr, IfStatement, ImportAst, LiteralExpr, MemberExpr, NodeType, ObjectLiteral, Program, Property, Stmt, StringVal, VariableDeclaration};
-use crate::environment::Environment;
+use crate::environment::{Environment, SharedEnv};
 use crate::mk_null;
 use crate::runtime::RuntimeVal;
 use crate::types::{ArrayVal, BooleanVal, FunctionVal, IntegerVal, NativeFnVal, NullVal, ObjectVal, ValueType, RESERVED_NAMES};
 use crate::types::ValueType::{Array, Boolean, Function, Integer, Null, Object};
 
-pub fn eval(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval(ast_node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     if let Ok(program) = ast_node.clone().downcast::<Program>() {
         let mut has_main_function = false;
 
@@ -64,7 +64,7 @@ pub fn eval(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVa
 
     evaluate(ast_node, env)
 }
-pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn evaluate(ast_node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
 
     match ast_node.kind() {
         NodeType::NumericLiteral => {
@@ -140,7 +140,7 @@ pub fn evaluate(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Runti
     }
 }
 
-pub fn eval_for_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_for_statement(ast_node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     let for_stmt = ast_node
         .as_any()
         .downcast_ref::<ForStatement>()
@@ -181,7 +181,7 @@ pub fn eval_for_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box
 }
 
 
-pub fn eval_if_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_if_statement(ast_node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     let if_stmt = ast_node.as_any().downcast_ref::<IfStatement>()
         .expect("Expected an IfStatement node");
 
@@ -195,30 +195,24 @@ pub fn eval_if_statement(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<
     };
 
     if condition_is_true {
-        let mut then_closure = || {
-            let mut last: Box<dyn RuntimeVal + Send + Sync> = mk_null();
-            for stmt in if_stmt.then_branch.iter() {
-                last = evaluate(stmt.clone(), env);
-            }
-            last
-        };
-        then_closure()
+        let mut last: Box<dyn RuntimeVal + Send + Sync> = mk_null();
+        for stmt in if_stmt.then_branch.iter() {
+            last = evaluate(stmt.clone(), env);
+        }
+        last
     } else if let Some(else_branch) = &if_stmt.else_branch {
-        let mut else_closure = || {
-            let mut last: Box<dyn RuntimeVal + Send + Sync> = mk_null();
-            for stmt in else_branch.iter() {
-                last = evaluate(stmt.clone(), env);
-            }
-            last
-        };
-        else_closure()
+        let mut last: Box<dyn RuntimeVal + Send + Sync> = mk_null();
+        for stmt in else_branch.iter() {
+            last = evaluate(stmt.clone(), env);
+        }
+        last
     } else {
         mk_null()
     }
 }
 
 
-pub fn eval_array_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_array_expr(node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     let array_node = node.downcast::<ArrayLiteral>()
         .expect("Expected an ArrayLiteral node");
 
@@ -236,7 +230,7 @@ pub fn eval_array_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Ru
 
 
 
-pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_assignment(node: Box<dyn Stmt>, env: &SharedEnv, ) -> Box<dyn RuntimeVal + Send + Sync> {
     let assignment = node.downcast::<AssignmentExpr>()
         .expect("Expected an AssignmentExpr node");
 
@@ -248,7 +242,7 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn 
     if let Some(ident) = assignment.assigne.as_any().downcast_ref::<IdentifierExpr>() {
         let var_name = ident.name.clone();
 
-        env.assign_var(var_name, new_value.clone())
+        env.lock().unwrap().assign_var(var_name, new_value.clone())
     }
     else if let Some(member) = assignment.assigne.as_any().downcast_ref::<MemberExpr>() {
         let object_val = evaluate(member.object.clone(), env);
@@ -293,7 +287,7 @@ pub fn eval_assignment(node: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn 
 }
 
 
-pub fn eval_const_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal + Send + Sync>{
+pub fn eval_const_declaration(declaration: Box<dyn Stmt>, env: &SharedEnv, ) -> Box<dyn RuntimeVal + Send + Sync>{
     let const_declaration = declaration.downcast::<ConstDeclaration>()
         .expect("Expected a ConstDeclaration node");
 
@@ -303,10 +297,10 @@ pub fn eval_const_declaration(declaration: Box<dyn Stmt>, env: &mut Environment,
         None => mk_null(),
     };
 
-    env.set_var(const_declaration.name.clone(), value, Some(declared_type))
+    env.lock().unwrap().set_const(const_declaration.name.clone(), value, Some(declared_type))
 }
 
-pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, ) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &SharedEnv, ) -> Box<dyn RuntimeVal + Send + Sync> {
     let var_declaration = declaration.downcast::<VariableDeclaration>()
         .expect("Expected a VariableDeclaration node");
 
@@ -316,9 +310,9 @@ pub fn eval_var_declaration(declaration: Box<dyn Stmt>, env: &mut Environment, )
         None => mk_null(),
     };
 
-    env.set_var(var_declaration.name.clone(), value, declared_type)
+    env.lock().unwrap().set_var(var_declaration.name.clone(), value, declared_type)
 }
-pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     let member = ast_node.downcast::<MemberExpr>()
         .expect("Expected a MemberExpr node");
 
@@ -352,9 +346,8 @@ pub fn eval_member_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<d
     }
 }
 
-pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
-    let binary_expr = ast_node.downcast::<BinaryExpr>()
-        .expect("Expected a BinaryExpr node");
+pub fn eval_binary_expr(ast_node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
+    let binary_expr = ast_node.downcast::<BinaryExpr>().expect("Expected a BinaryExpr node");
 
     let lhs = evaluate(binary_expr.left, env);
     let rhs = evaluate(binary_expr.right, env);
@@ -406,7 +399,7 @@ pub fn eval_numeric_binary_expr(lhs: &IntegerVal, rhs: &IntegerVal, operator: &s
             Box::from(IntegerVal { r#type: Option::from(Integer), value: lhs_value / rhs_value })
         },
         "%" => Box::from(IntegerVal { r#type: Option::from(Integer), value: lhs_value % rhs_value }),
-
+        "**" => Box::from(IntegerVal { r#type: Option::from(Integer), value: lhs_value.powf(rhs_value)}),
         ">"  => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value  > rhs_value }),
         "<"  => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value  < rhs_value }),
         ">=" => Box::from(BooleanVal { r#type: Option::from(Boolean), value: lhs_value >= rhs_value }),
@@ -418,7 +411,7 @@ pub fn eval_numeric_binary_expr(lhs: &IntegerVal, rhs: &IntegerVal, operator: &s
     }
 }
 
-pub fn eval_program(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_program(ast_node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     let program = ast_node.downcast::<Program>()
         .expect("Expected a Program node");
 
@@ -427,11 +420,11 @@ pub fn eval_program(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
     for stmt in program.body.into_iter().filter(|s| { !(matches!(s.kind(), NodeType::Identifier) && s.as_any().downcast_ref::<IdentifierExpr>().unwrap().name == "null") }) {
         last_evaluated = evaluate(stmt, env);
     }
-    
+
     last_evaluated
 }
 
-pub fn eval_identifier(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_identifier(ast_node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     let identifier_expr = ast_node.downcast::<IdentifierExpr>()
         .expect("Expected an IdentifierExpr node");
 
@@ -439,11 +432,11 @@ pub fn eval_identifier(ast_node: Box<dyn Stmt>, env: &mut Environment) -> Box<dy
         return mk_null();
     }
 
-    env.lookup_var(identifier_expr.name)
+    env.lock().unwrap().lookup_var(&identifier_expr.name)
 }
 
 
-pub fn eval_object_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_object_expr(node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     let obj = node
         .downcast::<ObjectLiteral>()
         .expect("Expected ObjectLiteral");
@@ -454,7 +447,7 @@ pub fn eval_object_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
         let runtime_val = if let Some(expr) = value {
             evaluate(expr, env)
         } else {
-            env.lookup_var(key.clone())
+            env.lock().unwrap().lookup_var(&key)
         };
         props.insert(key, runtime_val);
     }
@@ -465,7 +458,7 @@ pub fn eval_object_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn R
     })
 }
 
-pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync> {
+pub fn eval_call_expr(node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync> {
     let call = node
         .downcast::<CallExpr>()
         .expect("Expected CallExpr");
@@ -479,12 +472,13 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
     let callee = evaluate(call.caller, env);
 
     if let Some(native) = callee.as_any().downcast_ref::<NativeFnVal>() {
-        return (native.call)(args, env);
+        return (native.call)(args, &mut env.lock().unwrap());
     }
 
     if let Some(func) = callee.as_any().downcast_ref::<FunctionVal>() {
-        let decl_env = func.declaration_env.lock().unwrap().clone();
-        let mut scope = Environment::new(Some(Box::new(decl_env)));
+
+        let decl_env = func.declaration_env.clone();
+        let scope: SharedEnv = Environment::new_shared(Some(decl_env));
 
         if args.len() != func.parameters.len() {
             panic!(
@@ -496,12 +490,12 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
         }
 
         for (param, arg_val) in func.parameters.iter().zip(args.into_iter()) {
-            scope.set_var(param.clone(), arg_val, None);
+            scope.lock().unwrap().set_var(param.clone(), arg_val, None);
         }
 
         let mut result: Box<dyn RuntimeVal + Send + Sync> = mk_null();
         for stmt in func.body.iter() {
-            result = evaluate(stmt.clone(), &mut scope);
+            result = evaluate(stmt.clone(), &scope);
         }
 
         return result;
@@ -510,7 +504,7 @@ pub fn eval_call_expr(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn Run
     panic!("Cannot call value that is not a function: {:?}", callee);
 }
 
-pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &mut Environment) -> Box<dyn RuntimeVal + Send + Sync>{
+pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &SharedEnv) -> Box<dyn RuntimeVal + Send + Sync>{
     let func = node
         .downcast::<FunctionDeclaration>()
         .expect("Expected FunctionDeclaration");
@@ -520,10 +514,8 @@ pub fn eval_function_declaration(node: Box<dyn Stmt>, env: &mut Environment) -> 
         parameters: func.parameters,
         name: func.name.clone(),
         body: Arc::new(func.body),
-        declaration_env: Arc::new(Mutex::new(env.clone())),
+        declaration_env: env.clone(),
     };
 
-    //let decl_env : &mut Environment = unsafe {&mut *function_val.declaration_env} ;
-
-    env.set_var(func.name, Box::from(function), Option::from(Function))
+    env.lock().unwrap().set_var(func.name, Box::from(function), Option::from(Function))
 }

@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::fmt::Debug;
-use crate::environment::Environment;
+use crate::environment::{SharedEnv};
 use crate::evaluator::evaluate;
 use crate::types::{FunctionVal, ValueType};
 
@@ -49,7 +49,7 @@ impl Program {
         }
     }
 
-    pub fn has_x(&mut self, name: &str, target_type: NodeType, env: &mut Environment) -> bool {
+    pub fn has_x(&mut self, name: &str, target_type: NodeType, env: &SharedEnv) -> bool {
         if name.is_empty() {
             panic!("Name from has_x is empty");
         }

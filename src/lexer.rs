@@ -28,6 +28,8 @@ pub enum Token {
     Minus,
     #[token("*")]
     Star,
+    #[token("**")]
+    StarStar,
     #[token("%")]
     Percent,
     #[token("=")]

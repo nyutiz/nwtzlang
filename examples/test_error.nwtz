@@ -1,4 +1,5 @@
 const a:Integer = 5;
+
 log(a*a);
 
 aaaa();

@@ -6,13 +6,16 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::process;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use nwtzlang::environment::Environment;
+use nwtzlang::environment::SharedEnv;
 use nwtzlang::types::ValueType;
 
 #[tokio::main]
 async fn main() {
-    let mut env = make_global_env();
+    let env = make_global_env();
+    let shared_env: SharedEnv = Arc::new(Mutex::new(env));
+
     let mut input = String::new();
     let mut print_ast = false;
     let mut show_version = false;
@@ -20,7 +23,7 @@ async fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() == 1 {
-        run_repl(&mut env).await;
+        run_repl(&shared_env).await;
         return;
     }
 
@@ -75,7 +78,7 @@ async fn main() {
         eprintln!("No input provided.");
         print_usage_and_exit(1);
     }
-    
+
     let start = Instant::now();
 
     let tokens = tokenize(input);
@@ -85,12 +88,12 @@ async fn main() {
         println!("{:#?}\n", ast);
     }
 
-    let result = eval(Box::new(ast), &mut env);
+    let result = eval(Box::new(ast), &shared_env);
 
     if !matches!(result.value_type(), Some(ValueType::Null)) {
         println!("{:#?}", result);
     }
-    
+
     println!("Elapsed time: {:#?}", start.elapsed());
 }
 
@@ -108,7 +111,7 @@ fn print_usage_and_exit(code: i32) -> ! {
     process::exit(code);
 }
 
-async fn run_repl(env: &mut Environment) {
+async fn run_repl(shared_env: &SharedEnv) {
     let stdin = io::stdin();
     loop {
         print!("» ");
@@ -125,8 +128,9 @@ async fn run_repl(env: &mut Environment) {
         let tokens = tokenize(line.clone());
         let mut parser = Parser::new(tokens);
         let ast = parser.produce_ast();
+        
+        let result = eval(Box::new(ast), shared_env);
 
-        let result = eval(Box::new(ast), env);
         if !matches!(result.value_type(), Some(ValueType::Null)) {
             println!("{:#?}", result);
         }

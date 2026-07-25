@@ -22,15 +22,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use crate::ast::{NodeType, StringVal};
-use crate::environment::Environment;
+use crate::environment::{Environment, SharedEnv};
 use crate::evaluator::{eval, evaluate};
 use crate::lexer::tokenize;
 use crate::parser::Parser;
 use crate::runtime::RuntimeVal;
 use crate::thread::ThreadManager;
-//use crate::NodeType::Identifier;
-//use crate::Token::{LBrace, RBrace, Semicolon};
-//use crate::ValueType::{Boolean, NativeFn, Null, Integer, Object, Function, Array};
+
 
 
 pub fn mk_number<T: Into<f64>>(number: T) -> Box<IntegerVal> {
@@ -127,8 +125,9 @@ pub fn interpreter_to_vec_string(mut env: Environment, input: String) -> Vec<Str
     let tokens = tokenize(input);
     let mut parser = Parser::new(tokens);
     let ast = parser.produce_ast();
-    let _ = eval(Box::new(ast), &mut env);
-    let o = output.lock().unwrap().clone(); 
+    let shared_env: SharedEnv = Arc::new(Mutex::new(env));
+    let _ = eval(Box::new(ast), &shared_env);
+    let o = output.lock().unwrap().clone();
     o
 }
 
@@ -152,9 +151,9 @@ pub fn interpreter_to_stream(mut env: Environment, input: String, ) -> Unbounded
     let mut parser = Parser::new(tokens);
     let ast = parser.produce_ast();
 
-    let mut env_for_task = env.clone();
+    let shared_env: SharedEnv = Arc::new(Mutex::new(env));
     tokio::spawn(async move {
-        let _ = eval(Box::new(ast), &mut env_for_task);
+        let _ = eval(Box::new(ast), &shared_env);
         drop(tx);
     });
 
@@ -176,7 +175,7 @@ pub fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
             .map(|e| match_arg_to_string(e.as_ref()))
             .collect::<Vec<_>>()
             .join(",")
-        
+
     } else if let Some(fu) = arg.as_any().downcast_ref::<FunctionVal>() {
         format!("{:?}", fu.body)
     } else if let Some(ob) = arg.as_any().downcast_ref::<ObjectVal>() {
@@ -189,7 +188,7 @@ pub fn match_arg_to_string(arg: &dyn RuntimeVal) -> String {
             })
             .collect();
 
-        items.sort(); // voir pour enregistrer dans l'ordre d'ecriture les properties
+        items.sort();
         items.join(", ")
     } else if arg.as_any().downcast_ref::<NullVal>().is_some() {
         "null".into()
@@ -216,7 +215,7 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment)
         })
         .collect();
 
-    let v = scope.lookup_var(name.to_string());
+    let v = scope.lookup_var(name);
 
     match v.value_type().unwrap() {
         NativeFn => {
@@ -226,8 +225,7 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment)
         }
         Function => {
             let f = v.as_any().downcast_ref::<FunctionVal>().expect("Expected a FunctionVal");
-            let decl_env = f.declaration_env.lock().unwrap();
-            let mut local_scope = Environment::new(Some(Box::new(decl_env.clone())));
+            let local_scope: SharedEnv = Environment::new_shared(Some(f.declaration_env.clone()));
 
             if arg_vals.len() != f.parameters.len() {
                 panic!(
@@ -239,12 +237,12 @@ pub fn call_nwtz(name: &str, args: Option<Vec<String>>, scope: &mut Environment)
             }
 
             for (param, arg_val) in f.parameters.iter().zip(arg_vals.into_iter()) {
-                local_scope.set_var(param.clone(), arg_val, None);
+                local_scope.lock().unwrap().set_var(param.clone(), arg_val, None);
             }
 
             let mut result: Box<dyn RuntimeVal + Send + Sync> = mk_null();
             for stmt in f.body.iter() {
-                result = evaluate(stmt.clone(), &mut local_scope);
+                result = evaluate(stmt.clone(), &local_scope);
             }
 
             Some(result)
@@ -320,7 +318,7 @@ pub fn make_global_env() -> Environment {
         })),
         Option::from(NativeFn)
     );
-    
+
     env.set_var(
         "log".to_string(),
         mk_fn(Arc::new(move |args, _| {
@@ -359,7 +357,7 @@ pub fn make_global_env() -> Environment {
                 .read_line(&mut out)
                 .expect("failed to readline");
             out = out.trim_end().to_string();
-            
+
             //println!("EXTRAIT : {}", out);
 
             mk_string(out)
@@ -370,61 +368,61 @@ pub fn make_global_env() -> Environment {
     env.set_var(
         "thread".to_string(),
         mk_object({
-            let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
-            let thread_manager_clone = thread_manager.clone();
+                      let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+                      let thread_manager_clone = thread_manager.clone();
 
-            props.insert(
-                "start".to_string(),
-                mk_fn(Arc::new(move |args, _scope| {
+                      props.insert(
+                          "start".to_string(),
+                          mk_fn(Arc::new(move |args, _scope| {
 
-                    if args.is_empty() {
-                        panic!("thread.start: fonction attendue comme argument");
-                    }
+                              if args.is_empty() {
+                                  panic!("thread.start: fonction attendue comme argument");
+                              }
 
-                    let func_arg = &args[0];
+                              let func_arg = &args[0];
 
-                    match func_arg.value_type() {
-                        Some(Function) => {
-                            let func = func_arg
-                                .as_any()
-                                .downcast_ref::<FunctionVal>()
-                                .expect("Expected FunctionVal");
+                              match func_arg.value_type() {
+                                  Some(Function) => {
+                                      let func = func_arg
+                                          .as_any()
+                                          .downcast_ref::<FunctionVal>()
+                                          .expect("Expected FunctionVal");
 
-                            let func_name = func.name.clone();
-                            let func_body = func.body.clone();
-                            let func_env = func.declaration_env.lock().unwrap().clone();
+                                      let func_name = func.name.clone();
+                                      let func_body = func.body.clone();
+                                      let func_env = func.declaration_env.clone();
 
-                            let handle = std::thread::spawn(move || {
-                                let mut local_env = Environment::new(Some(Box::new(func_env)));
+                                      let handle = std::thread::spawn(move || {
+                                          let local_env: SharedEnv = Environment::new_shared(Some(func_env));
 
-                                for stmt in func_body.iter() {
-                                    let _ = eval(stmt.clone(), &mut local_env);
-                                }
-                            });
+                                          for stmt in func_body.iter() {
+                                              let _ = eval(stmt.clone(), &local_env);
+                                          }
+                                      });
 
-                            thread_manager.handles.lock().unwrap().push(handle);
+                                      thread_manager.handles.lock().unwrap().push(handle);
 
-                            mk_string(format!("{}", func_name))
-                        }
-                        e => {
-                            panic!("thread.start: argument doit être une fonction {:?}", e);
-                        }
-                    }
-                })),
-            );
+                                      mk_string(format!("{}", func_name))
+                                  }
+                                  e => {
+                                      panic!("thread.start: argument doit être une fonction {:?}", e);
+                                  }
+                              }
+                          })),
+                      );
 
-            props.insert(
-                "wait".to_string(),
-                mk_fn(Arc::new({
-                    move |_args, _scope| {
-                        thread_manager_clone.wait_all();
-                        mk_null()
-                    }
-                })),
-            );
-            
-            props
-            },
+                      props.insert(
+                          "wait".to_string(),
+                          mk_fn(Arc::new({
+                              move |_args, _scope| {
+                                  thread_manager_clone.wait_all();
+                                  mk_null()
+                              }
+                          })),
+                      );
+
+                      props
+                  },
         ),
         Option::from(Object)
     );
@@ -432,92 +430,90 @@ pub fn make_global_env() -> Environment {
     env.set_var(
         "system".to_string(),
         mk_object({
-            let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+                      let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
-            props.insert(
-                "a".to_string(),
-                mk_string("A A A A A".to_string()),
-            );
+                      props.insert(
+                          "a".to_string(),
+                          mk_string("A A A A A".to_string()),
+                      );
 
-            props.insert(
-                "config".to_string(),
-                {
+                      props.insert(
+                          "config".to_string(),
+                          {
+                              
+                              let mut a:Vec<Box<dyn RuntimeVal + Send + Sync>> = Vec::new();
 
-                    // pas la meilleure implementation, il faudrait sysinfo sauf que lib trop grandes
+                              for (key, value) in env::vars() {
+                                  a.push(mk_string(format!("{}: {:#?}", key, value).to_string()));
+                              }
 
-                    let mut a:Vec<Box<dyn RuntimeVal + Send + Sync>> = Vec::new();
+                              mk_array(a)
+                          }
+                      );
 
-                    for (key, value) in env::vars() {
-                        a.push(mk_string(format!("{}: {:#?}", key, value).to_string()));
-                    }
+                      props.insert(
+                          "type".to_string(),
+                          mk_fn(Arc::new(|args, _scope| {
+                              mk_string(format!("{:?}", args[0].clone().value_type().unwrap()))
+                          })),
+                      );
 
-                    mk_array(a)
-                }
-            );
+                      props.insert(
+                          "socket".to_string(),
+                          mk_object({
+                              let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
-            props.insert(
-                "type".to_string(),
-                mk_fn(Arc::new(|args, _scope| {
-                    mk_string(format!("{:?}", args[0].clone().value_type().unwrap()))
-                })),
-            );
+                              props.insert("start".to_string(), mk_fn(Arc::new(move |args, scope| {
+                                  let addr = args.first()
+                                      .and_then(|arg| {
+                                          arg.as_any()
+                                              .downcast_ref::<StringVal>()
+                                              .map(|s| s.value.clone())
+                                      })
+                                      .unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
-            props.insert(
-                "socket".to_string(),
-                mk_object({
-                    let mut props: HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+                                  let message = args
+                                      .get(1)
+                                      .and_then(|arg| {
+                                          arg.as_any()
+                                              .downcast_ref::<StringVal>()
+                                              .map(|s| s.value.clone())
+                                      })
+                                      .unwrap_or_else(|| "Hello from nwtz server!\n".to_string());
 
-                    props.insert("start".to_string(), mk_fn(Arc::new(move |args, scope| {
-                        let addr = args.first()
-                            .and_then(|arg| {
-                                arg.as_any()
-                                    .downcast_ref::<StringVal>()
-                                    .map(|s| s.value.clone())
-                            })
-                            .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+                                  let listener = std::net::TcpListener::bind(&addr)
+                                      .expect("Impossible de binder l'adresse");
 
-                        let message = args
-                            .get(1)
-                            .and_then(|arg| {
-                                arg.as_any()
-                                    .downcast_ref::<StringVal>()
-                                    .map(|s| s.value.clone())
-                            })
-                            .unwrap_or_else(|| "Hello from nwtz server!\n".to_string());
+                                  native_log(format!("Serveur démarré sur {}, en attente d'un client...", addr).to_string(), scope);
 
-                        let listener = std::net::TcpListener::bind(&addr)
-                            .expect("Impossible de binder l'adresse");
+                                  let mut out:HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
 
-                        native_log(format!("Serveur démarré sur {}, en attente d'un client...", addr).to_string(), scope);
+                                  let (mut stream, peer_addr) = listener
+                                      .accept()
+                                      .expect("Échec de l'acceptation d'un client");
 
-                        let mut out:HashMap<String, Box<dyn RuntimeVal + Send + Sync>> = HashMap::new();
+                                  native_log(format!("Client connecté depuis : {}", peer_addr).to_string(), scope);
 
-                        let (mut stream, peer_addr) = listener
-                            .accept()
-                            .expect("Échec de l'acceptation d'un client");
+                                  let mut buffer = [0u8; 512];
+                                  let n = stream
+                                      .read(&mut buffer)
+                                      .expect("Échec de lecture sur le socket");
 
-                        native_log(format!("Client connecté depuis : {}", peer_addr).to_string(), scope);
+                                  native_log(format!("Reçu ({} octets) : {}", n, String::from_utf8_lossy(&buffer[..n])).to_string().to_string(), scope);
 
-                        let mut buffer = [0u8; 512];
-                        let n = stream
-                            .read(&mut buffer)
-                            .expect("Échec de lecture sur le socket");
+                                  stream.write_all(message.as_bytes()).expect("Échec d'envoi de la réponse");
+                                  native_log("Réponse envoyée, fermeture de la connexion.".to_string(), scope);
 
-                        native_log(format!("Reçu ({} octets) : {}", n, String::from_utf8_lossy(&buffer[..n])).to_string().to_string(), scope);
+                                  out.insert("output".to_string(), mk_string(String::from_utf8_lossy(&buffer[..n]).to_string()));
 
-                        stream.write_all(message.as_bytes()).expect("Échec d'envoi de la réponse");
-                        native_log("Réponse envoyée, fermeture de la connexion.".to_string(), scope);
+                                  mk_object(out)
+                              })));
 
-                        out.insert("output".to_string(), mk_string(String::from_utf8_lossy(&buffer[..n]).to_string()));
-
-                        mk_object(out)
-                    })));
-
-                    props
-                })
-            );
-            props
-            },
+                              props
+                          })
+                      );
+                      props
+                  },
         ),
         Option::from(Object)
     );
@@ -546,14 +542,15 @@ mod tests {
     //use crate::{evaluate, make_global_env, tokenize, Parser};
     #[test]
     fn test(){
-        let mut env = make_global_env();
+        let env = make_global_env();
+        let shared_env: SharedEnv = Arc::new(Mutex::new(env));
         let tokens = tokenize(fs::read_to_string("code.nwtz").unwrap());
         let mut parser = Parser::new(tokens);
         let ast = parser.produce_ast();
-        eval(Box::from(ast), &mut env);
+        eval(Box::from(ast), &shared_env);
 
     }
-    
+
 }
 
 /*
@@ -586,5 +583,3 @@ loop {
             //println!("{:#?}", res);
         }
  */
-
-

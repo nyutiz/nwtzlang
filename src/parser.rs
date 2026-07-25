@@ -32,20 +32,14 @@ impl Parser {
             program.body.push(self.parse_stmt());
         }
 
-        let (imports, without_imports): (Vec<_>, Vec<_>) =
-            program.body
-                .into_iter()
-                .partition(|stmt| stmt.kind() == NodeType::ImportAst);
+        //let (imports, without_imports): (Vec<_>, Vec<_>) = program.body.into_iter().partition(|stmt| stmt.kind() == NodeType::ImportAst);
 
-        let (fns, rest): (Vec<_>, Vec<_>) =
-            without_imports
-                .into_iter()
-                .partition(|stmt| stmt.kind() == NodeType::FunctionDeclaration);
+        //let (fns, rest): (Vec<_>, Vec<_>) = without_imports.into_iter().partition(|stmt| stmt.kind() == NodeType::FunctionDeclaration);
 
-        program.body = Vec::new();
-        program.body.extend(imports);
-        program.body.extend(fns);
-        program.body.extend(rest);
+        //program.body = Vec::new();
+        //program.body.extend(imports);
+        //program.body.extend(fns);
+        //program.body.extend(rest);
 
         program
     }
@@ -120,7 +114,7 @@ impl Parser {
             Token::For => {
                 self.parse_for_statement()
             }
-            _ => self.parse_expr(),
+            _ => self.parse_assignment_expr(),
         }
     }
 
@@ -222,7 +216,7 @@ impl Parser {
                 Token::Equal   => "==",
                 Token::Greater => ">",
                 Token::Lower   => "<",
-                _ => panic!("Opérateur attendu (=, > ou <)"),
+                _ => panic!("Opérateur attendu (==, > ou <)"),
             }.to_string();
 
             let right: Box<dyn Stmt> = match self.eat() {
@@ -421,7 +415,7 @@ impl Parser {
             }
             else if let Token::Identifier(key) = self.eat() {
                 self.expect(Token::Colon, "Expected ':' after property key");
-                let value = self.parse_expr();
+                let value = self.parse_assignment_expr();
                 properties.push(Property {
                     kind: NodeType::Property,
                     key,
@@ -466,7 +460,7 @@ impl Parser {
             }
             else if let Token::Identifier(key) = self.eat() {
                 self.expect(Token::Colon, "Expected ':' after property key");
-                let value = self.parse_expr();
+                let value = self.parse_assignment_expr();
                 properties.push(Property {
                     kind: NodeType::Property,
                     key,
@@ -558,7 +552,7 @@ impl Parser {
             let parsed_value = if *self.at() == Token::LBrace {
                 self.parse_object_literal()
             } else {
-                self.parse_expr()
+                self.parse_assignment_expr()
             };
 
             Some(parsed_value)
@@ -645,7 +639,7 @@ impl Parser {
             let parsed_value = if *self.at() == Token::LBrace {
                 self.parse_object_literal()
             } else {
-                self.parse_expr()
+                self.parse_assignment_expr()
             };
 
             Some(parsed_value)
@@ -713,7 +707,7 @@ impl Parser {
 
             self.expect(Token::Colon, "Missing colon following identifier in ObjectExpr");
 
-            let value = self.parse_expr();
+            let value = self.parse_assignment_expr();
 
             properties.push(Property{
                 kind: NodeType::Property,
@@ -732,10 +726,6 @@ impl Parser {
             kind: NodeType::ObjectLiteral,
             properties,
         })
-    }
-
-    fn parse_expr(&mut self) -> Box<dyn Stmt> {
-        self.parse_assignment_expr()
     }
 
     fn parse_additive_expr(&mut self) -> Box<dyn Stmt> {
@@ -768,6 +758,7 @@ impl Parser {
                 Token::Star => "*".to_string(),
                 Token::Slash => "/".to_string(),
                 Token::Percent => "%".to_string(),
+                Token::StarStar => "**".to_string(),
                 _ => unreachable!(),
             };
             let right = self.parse_call_member_expr();
@@ -888,10 +879,10 @@ impl Parser {
         let mut elements: Vec<Box<dyn Stmt>> = Vec::new();
 
         if *self.at() != Token::RBracket {
-            elements.push(self.parse_expr());
+            elements.push(self.parse_assignment_expr());
             while *self.at() == Token::Comma {
                 self.eat();
-                elements.push(self.parse_expr());
+                elements.push(self.parse_assignment_expr());
             }
         }
         self.expect(Token::RBracket, "Expected ']' to close array literal");
@@ -918,7 +909,7 @@ impl Parser {
                     panic!("Cannot use dot operator without right hand side being a identifier {:?}", self.at());
                 }
             } else {
-                property = self.parse_expr();
+                property = self.parse_assignment_expr();
                 self.expect(Token::RBracket, "Missing closing bracket in computed value");
             }
 
@@ -960,7 +951,7 @@ impl Parser {
                 value: "null".to_string(),
             }),
             Token::LParen => {
-                let expr = self.parse_expr();
+                let expr = self.parse_assignment_expr();
                 self.expect(Token::RParen, "Expected `)`.");
                 expr
             },

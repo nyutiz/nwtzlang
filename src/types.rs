@@ -35,8 +35,6 @@ pub struct ArrayVal {
     pub elements: Arc<Mutex<Vec<Box<dyn RuntimeVal + Send + Sync>>>>,
 }
 
-
-
 #[derive(Debug, Clone)]
 pub struct IntegerVal {
     pub r#type: Option<ValueType>,
@@ -49,14 +47,11 @@ pub struct BooleanVal {
     pub value: bool,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct ObjectVal {
     pub r#type: Option<ValueType>,
     pub properties:  Arc<Mutex<HashMap<String, Box<dyn RuntimeVal + Send + Sync>>>>,
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct FunctionVal {

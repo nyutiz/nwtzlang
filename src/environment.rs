@@ -1,12 +1,16 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use crate::runtime::RuntimeVal;
 use crate::types::ValueType;
 
+pub type SharedEnv = Arc<Mutex<Environment>>;
+
 #[derive(Debug, Clone)]
 pub struct Environment {
-    parent: Option<Box<Environment>>,
+    parent: Option<SharedEnv>,
     variables: HashMap<String, Box<dyn RuntimeVal + Send + Sync>>,
     var_types: HashMap<String, Option<ValueType>>,
+    constants: HashSet<String>,
 }
 
 impl Default for Environment {
@@ -15,38 +19,34 @@ impl Default for Environment {
             parent: None,
             variables: HashMap::new(),
             var_types: HashMap::new(),
+            constants: HashSet::new(),
         }
     }
 }
 
 impl Environment {
-    pub fn new(parent: Option<Box<Environment>>) -> Self {
+    pub fn new(parent: Option<SharedEnv>) -> Self {
         Environment {
             parent,
             variables: HashMap::new(),
             var_types: HashMap::new(),
+            constants: HashSet::new(),
         }
     }
 
-    pub fn find_var_in_chain(&mut self, var_name: &str) -> Option<&mut Environment> {
-        if self.variables.contains_key(var_name) {
-            return Some(self);
-        }
-        if let Some(parent) = &mut self.parent {
-            return parent.find_var_in_chain(var_name);
-        }
-        None
-    }
-
-    pub fn get_global_env(&mut self) -> &mut Environment {
-        if self.parent.is_none() {
-            self
-        } else {
-            self.parent.as_mut().unwrap().get_global_env()
-        }
+    pub fn new_shared(parent: Option<SharedEnv>) -> SharedEnv {
+        Arc::new(Mutex::new(Environment::new(parent)))
     }
 
     pub fn set_var(&mut self, var_name: String, new_value: Box<dyn RuntimeVal + Send + Sync>, declared_type: Option<ValueType>) -> Box<dyn RuntimeVal + Send + Sync> {
+        self.declare(var_name, new_value, declared_type, false)
+    }
+
+    pub fn set_const(&mut self, var_name: String, new_value: Box<dyn RuntimeVal + Send + Sync>, declared_type: Option<ValueType>) -> Box<dyn RuntimeVal + Send + Sync> {
+        self.declare(var_name, new_value, declared_type, true)
+    }
+
+    fn declare(&mut self, var_name: String, new_value: Box<dyn RuntimeVal + Send + Sync>, declared_type: Option<ValueType>, is_const: bool) -> Box<dyn RuntimeVal + Send + Sync> {
         if let Some(ty) = declared_type.clone() {
             self.var_types.insert(var_name.clone(), Some(ty));
         }
@@ -62,74 +62,50 @@ impl Environment {
                     );
                 }
             }
+            if is_const {
+                self.constants.insert(var_name.clone());
+            }
             self.variables.insert(var_name, new_value.clone());
             return new_value;
         }
 
         self.var_types.insert(var_name.clone(), declared_type);
+        if is_const {
+            self.constants.insert(var_name.clone());
+        }
         self.variables.insert(var_name, new_value.clone());
         new_value
     }
+
     pub fn assign_var(&mut self, var_name: String, new_value: Box<dyn RuntimeVal + Send + Sync>) -> Box<dyn RuntimeVal + Send + Sync> {
         if self.variables.contains_key(&var_name) {
+            if self.constants.contains(&var_name) {
+                panic!("Cannot assign to constant `{}`", var_name);
+            }
             if let Some(Some(expected)) = self.var_types.get(&var_name) {
-                let actual = new_value.value_type()
-                    .expect("RuntimeVal should always have a type");
+                let actual = new_value.value_type().expect("RuntimeVal should always have a type");
                 if &actual != expected {
-                    panic!(
-                        "Type error: variable `{}` declared as `{:?}` but assigned `{:?}`",
-                        var_name, expected, actual
-                    );
+                    panic!("Type error: variable `{}` declared as `{:?}` but assigned `{:?}`", var_name, expected, actual);
                 }
             }
             self.variables.insert(var_name, new_value.clone());
             return new_value;
         }
 
-        if let Some(env_with_var) = self.find_var_in_chain(&var_name) {
-            if let Some(Some(expected)) = env_with_var.var_types.get(&var_name) {
-                let actual = new_value.value_type()
-                    .expect("RuntimeVal should always have a type");
-                if &actual != expected {
-                    panic!(
-                        "Type error: variable `{}` declared as `{:?}` but assigned `{:?}`",
-                        var_name, expected, actual
-                    );
-                }
-            }
-            env_with_var.variables.insert(var_name, new_value.clone());
-            return new_value;
-        }
-
-        let global_env = self.get_global_env();
-        if global_env.variables.contains_key(&var_name) {
-            if let Some(Some(expected)) = global_env.var_types.get(&var_name) {
-                let actual = new_value.value_type()
-                    .expect("RuntimeVal should always have a type");
-                if &actual != expected {
-                    panic!(
-                        "Type error: variable `{}` declared as `{:?}` but assigned `{:?}`",
-                        var_name, expected, actual
-                    );
-                }
-            }
-            global_env.variables.insert(var_name, new_value.clone());
-            return new_value;
+        if let Some(parent) = &self.parent {
+            return parent.lock().unwrap().assign_var(var_name, new_value);
         }
 
         panic!("Cannot assign to undeclared variable '{}'", var_name);
     }
-    pub fn lookup_var(&mut self, var_name: String) -> Box<dyn RuntimeVal + Send + Sync> {
-        let env = self.resolve(&var_name);
-        env.variables.get(&var_name).unwrap().clone()
-    }
-    pub fn resolve(&mut self, var_name: &str) -> &mut Environment {
-        if self.variables.contains_key(var_name) {
-            self
-        } else if let Some(ref mut parent_env) = self.parent {
-            parent_env.resolve(var_name)
-        } else {
-            panic!("Cannot resolve '{}' as it does not exist.", var_name);
+
+    pub fn lookup_var(&self, var_name: &str) -> Box<dyn RuntimeVal + Send + Sync> {
+        if let Some(val) = self.variables.get(var_name) {
+            return val.clone();
         }
+        if let Some(parent) = &self.parent {
+            return parent.lock().unwrap().lookup_var(var_name);
+        }
+        panic!("Cannot resolve '{}' as it does not exist.", var_name);
     }
 }
